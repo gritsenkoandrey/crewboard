@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Project } from "../types";
 import Board from "./Board";
+import Docs from "./Docs";
 import InlineInput from "./InlineInput";
 import ProjectCover from "./ProjectCover";
 
@@ -54,7 +55,7 @@ export default function ProjectPage({ project, onBack, onRename }: Props) {
         {tab === "board" ? (
           <Board projectId={project.id} />
         ) : (
-          <div className="empty muted">Редактор документации появится позже.</div>
+          <Docs projectId={project.id} />
         )}
       </div>
     </div>

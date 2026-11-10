@@ -4,6 +4,9 @@
   --border: #e6e6e3;
   --border-strong: #cfcfcb;
   --hover: rgba(55, 53, 47, 0.08);
+  --hover-soft: rgba(55, 53, 47, 0.03);
+  --selection: rgba(35, 131, 226, 0.22);
+  --font-mono: "Cascadia Code", Consolas, monospace;
   --text: #37352f;
   --muted: #8a8984;
   --accent: #2383e2;
@@ -25,6 +28,8 @@
     --border: #2f2f2f;
     --border-strong: #454545;
     --hover: rgba(255, 255, 255, 0.08);
+    --hover-soft: rgba(255, 255, 255, 0.03);
+    --selection: rgba(35, 131, 226, 0.35);
     --text: #e6e6e4;
     --muted: #8f8f8c;
     --warning-bg: #3a3320;
@@ -396,10 +401,13 @@ body {
   margin-top: 16px;
 }
 
-/* Страница проекта */
+/* Страница проекта занимает всю высоту: доска и документация прокручиваются внутри вкладки. */
 .project-page {
   max-width: 1200px;
+  height: 100%;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .project-header {
@@ -472,7 +480,223 @@ body {
 }
 
 .tab-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding-top: 20px;
+}
+
+/* Документация */
+.docs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.docs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
+.segmented button {
+  font: inherit;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented button.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.save-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.save-status.error {
+  color: var(--danger);
+}
+
+.docs-error {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.docs-body {
+  flex: 1;
+  min-height: 300px;
+  display: grid;
+  grid-template-columns: 1fr;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.docs-split .docs-body {
+  grid-template-columns: 1fr 1fr;
+}
+
+.docs-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.docs-split .editor-pane {
+  border-right: 1px solid var(--border);
+}
+
+.md-editor {
+  height: 100%;
+}
+
+.preview-pane {
+  padding: 16px 28px 60px;
+}
+
+.docs-view .preview-pane {
+  padding: 24px max(28px, calc((100% - 820px) / 2)) 60px;
+}
+
+.docs-empty {
+  text-align: center;
+  margin-top: 60px;
+}
+
+/* Оформление отрисованного markdown */
+.markdown {
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 1.4em 0 0.5em;
+  line-height: 1.3;
+}
+
+.markdown h1 {
+  font-size: 1.8em;
+}
+
+.markdown h2 {
+  font-size: 1.4em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown h3 {
+  font-size: 1.15em;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote,
+.markdown pre,
+.markdown table {
+  margin: 0 0 0.9em;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: 1.6em;
+}
+
+.markdown li + li {
+  margin-top: 0.2em;
+}
+
+.markdown a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.markdown a:hover {
+  text-decoration: underline;
+}
+
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
+.markdown pre {
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.markdown pre code {
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.markdown blockquote {
+  padding: 0 1em;
+  color: var(--muted);
+  border-left: 3px solid var(--border-strong);
+}
+
+.markdown img {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.markdown hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5em 0;
+}
+
+.markdown table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown th,
+.markdown td {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+}
+
+.markdown th {
+  background: var(--bg-soft);
 }
 
 /* Канбан-доска */

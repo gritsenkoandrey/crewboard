@@ -19,7 +19,7 @@ use tauri::AppHandle;
 
 const PROJECTS_DIR: &str = "projects";
 const META_FILE: &str = "project.json";
-const README_FILE: &str = "README.md";
+pub(crate) const README_FILE: &str = "README.md";
 pub(crate) const BOARD_FILE: &str = "board.json";
 const MAX_NAME_CHARS: usize = 200;
 const MAX_SLUG_CHARS: usize = 40;

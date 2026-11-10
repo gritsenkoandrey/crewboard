@@ -42,6 +42,20 @@ export function saveBoard(id: string, board: Board): Promise<void> {
   return invoke("save_board", { id, board });
 }
 
+export interface Readme {
+  text: string;
+  /** Папка проекта: относительно неё открываются картинки. */
+  dir: string;
+}
+
+export function getReadme(id: string): Promise<Readme> {
+  return invoke("get_readme", { id });
+}
+
+export function saveReadme(id: string, text: string): Promise<void> {
+  return invoke("save_readme", { id, text });
+}
+
 /** Системный диалог выбора папки. Возвращает null, если пользователь его закрыл. */
 export async function pickFolder(defaultPath?: string): Promise<string | null> {
   const result = await open({ directory: true, multiple: false, defaultPath, title: "Папка с данными Task Track" });

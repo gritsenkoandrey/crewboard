@@ -1,4 +1,5 @@
 mod board;
+mod docs;
 mod projects;
 
 use serde::{Deserialize, Serialize};
@@ -109,6 +110,8 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        // Ссылки из документации открываются в системном браузере, а не внутри окна.
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_data_dir,
             set_data_dir,
@@ -118,6 +121,8 @@ pub fn run() {
             projects::delete_project,
             board::get_board,
             board::save_board,
+            docs::get_readme,
+            docs::save_readme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
