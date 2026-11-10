@@ -2,6 +2,8 @@
   --bg: #ffffff;
   --bg-soft: #f7f7f5;
   --border: #e6e6e3;
+  --border-strong: #cfcfcb;
+  --hover: rgba(55, 53, 47, 0.08);
   --text: #37352f;
   --muted: #8a8984;
   --accent: #2383e2;
@@ -21,6 +23,8 @@
     --bg: #191919;
     --bg-soft: #202020;
     --border: #2f2f2f;
+    --border-strong: #454545;
+    --hover: rgba(255, 255, 255, 0.08);
     --text: #e6e6e4;
     --muted: #8f8f8c;
     --warning-bg: #3a3320;
@@ -119,8 +123,14 @@ body {
 }
 
 .logo {
-  margin: 0;
+  font: inherit;
   font-size: 16px;
+  font-weight: 600;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }
 
 .data-dir {
@@ -132,7 +142,10 @@ body {
 }
 
 .error-bar {
-  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 20px;
   color: var(--danger);
   border-bottom: 1px solid var(--border);
 }
@@ -146,4 +159,318 @@ body {
 .empty {
   text-align: center;
   margin-top: 80px;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.icon-btn {
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--hover);
+}
+
+.link-btn {
+  font: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  color: var(--text);
+}
+
+.btn.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
+.inline-input {
+  font: inherit;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+
+/* Сетка проектов */
+.project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.project-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 190px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: visible;
+  cursor: pointer;
+  text-align: left;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.project-card:hover,
+.project-card:focus-visible {
+  border-color: var(--border-strong);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  outline: none;
+}
+
+.project-card .cover {
+  height: 120px;
+  border-radius: 9px 9px 0 0;
+}
+
+.cover {
+  display: block;
+  width: 100%;
+  object-fit: cover;
+}
+
+.cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cover-placeholder span {
+  font-size: 40px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.project-info {
+  padding: 10px 12px;
+}
+
+.project-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-menu-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #37352f;
+  opacity: 0;
+}
+
+.project-card:hover .card-menu-btn,
+.card-menu-btn:focus-visible {
+  opacity: 1;
+}
+
+.card-menu-btn:hover {
+  background: #fff;
+}
+
+.new-card {
+  font: inherit;
+  color: var(--muted);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-style: dashed;
+}
+
+.new-card:hover {
+  color: var(--text);
+}
+
+.new-card.editing {
+  cursor: default;
+  padding: 16px;
+}
+
+.new-card .plus {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.hint {
+  font-size: 12px;
+}
+
+.menu {
+  position: absolute;
+  top: 40px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.menu button {
+  font: inherit;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: var(--hover);
+}
+
+.menu button.danger-text {
+  color: var(--danger);
+}
+
+/* Диалог */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.dialog {
+  width: min(420px, calc(100% - 32px));
+  padding: 20px;
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+  cursor: default;
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.dialog-body {
+  line-height: 1.5;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Страница проекта */
+.project-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.project-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-cover {
+  width: 160px;
+  height: 100px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.header-cover.cover-placeholder span {
+  font-size: 32px;
+}
+
+.project-header-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-title {
+  margin: 6px 0 10px;
+  font-size: 26px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  border-radius: 4px;
+}
+
+.project-title:hover {
+  background: var(--hover);
+}
+
+.title-input {
+  margin: 6px 0 10px;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tabs button {
+  font: inherit;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tabs button:hover {
+  color: var(--text);
+}
+
+.tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.tab-content {
+  padding-top: 20px;
 }

@@ -1,10 +1,10 @@
+mod projects;
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
-/// Подпапка внутри папки данных, где лежат проекты.
-const PROJECTS_DIR: &str = "projects";
 /// Файл настроек приложения в %APPDATA%\com.local.tasktrack\.
 const CONFIG_FILE: &str = "config.json";
 
@@ -26,7 +26,7 @@ struct DataDirInfo {
     missing: bool,
 }
 
-type CmdResult<T> = Result<T, String>;
+pub(crate) type CmdResult<T> = Result<T, String>;
 
 fn config_path(app: &AppHandle) -> CmdResult<PathBuf> {
     let dir = app
@@ -47,7 +47,7 @@ fn read_config(app: &AppHandle) -> CmdResult<Config> {
 }
 
 /// Пишет файл через временный, чтобы сбой посреди записи не оставил его обрезанным.
-fn write_atomic(path: &Path, contents: &str) -> CmdResult<()> {
+pub(crate) fn write_atomic(path: &Path, contents: &str) -> CmdResult<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Не удалось создать папку {}: {e}", parent.display()))?;
     }
@@ -59,6 +59,15 @@ fn write_atomic(path: &Path, contents: &str) -> CmdResult<()> {
 fn write_config(app: &AppHandle, config: &Config) -> CmdResult<()> {
     let text = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
     write_atomic(&config_path(app)?, &text)
+}
+
+/// Текущая папка данных. Ошибка, если она не выбрана или недоступна.
+pub(crate) fn data_dir(app: &AppHandle) -> CmdResult<PathBuf> {
+    match read_config(app)?.data_dir {
+        Some(dir) if dir.is_dir() => Ok(dir),
+        Some(dir) => Err(format!("Папка с данными недоступна: {}", dir.display())),
+        None => Err("Папка с данными не выбрана".into()),
+    }
 }
 
 #[tauri::command]
@@ -81,7 +90,7 @@ fn set_data_dir(app: AppHandle, path: String) -> CmdResult<DataDirInfo> {
     if !dir.is_dir() {
         return Err(format!("Папка не найдена: {path}"));
     }
-    let projects = dir.join(PROJECTS_DIR);
+    let projects = projects::projects_root(&dir);
     fs::create_dir_all(&projects).map_err(|e| format!("Не удалось создать {}: {e}", projects.display()))?;
     write_config(&app, &Config { data_dir: Some(dir) })?;
     Ok(DataDirInfo { path: Some(path), missing: false })
@@ -99,7 +108,14 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![get_data_dir, set_data_dir])
+        .invoke_handler(tauri::generate_handler![
+            get_data_dir,
+            set_data_dir,
+            projects::list_projects,
+            projects::create_project,
+            projects::rename_project,
+            projects::delete_project,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
