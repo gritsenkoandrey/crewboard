@@ -26,7 +26,7 @@ import type { Board as BoardData, ColumnId, Task } from "../types";
 import InlineInput from "./InlineInput";
 
 const COLUMNS: { id: ColumnId; title: string }[] = [
-  { id: "todo", title: "For dev" },
+  { id: "todo", title: "Not started" },
   { id: "inProgress", title: "In progress" },
   { id: "done", title: "Done" },
 ];
@@ -207,8 +207,10 @@ function Column({ id, title, tasks, onAdd, onRename, onDelete }: ColumnProps) {
   return (
     <section className={`column column-${id}`}>
       <header className="column-header">
-        <span className="column-dot" />
-        <span className="column-title">{title}</span>
+        <span className="column-pill">
+          <span className="column-dot" />
+          {title}
+        </span>
         <span className="column-count">{tasks.length}</span>
       </header>
 

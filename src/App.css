@@ -786,15 +786,27 @@ body {
   gap: 6px;
   padding: 10px;
   border-radius: 10px;
-  background: var(--bg-soft);
+  background: var(--col-bg, var(--bg-soft));
 }
 
 .column-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 2px 4px 6px;
-  font-weight: 600;
+  padding: 2px 2px 6px;
+}
+
+/* Название колонки — плашка с цветной точкой. */
+.column-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 8px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pill-text, var(--text));
+  background: var(--pill-bg, var(--hover));
 }
 
 .column-dot {
@@ -804,10 +816,17 @@ body {
   background: var(--col-color);
 }
 
-.column-todo {
-  --col-color: #e85d5d;
+.column-count {
+  color: var(--count-color, var(--muted));
 }
 
+/* Not started — нейтральная колонка. */
+.column-todo {
+  --col-color: #9b9a97;
+}
+
+/* In progress и Done окрашены целиком: фон колонки, карточки и плашка.
+   Оттенки смешиваются с фоном темы, поэтому работают и в светлой, и в тёмной. */
 .column-inProgress {
   --col-color: #e9a93a;
 }
@@ -816,9 +835,15 @@ body {
   --col-color: #48b878;
 }
 
-.column-count {
-  color: var(--muted);
-  font-weight: 400;
+.column-inProgress,
+.column-done {
+  --col-bg: color-mix(in srgb, var(--col-color) 11%, var(--bg));
+  --card-bg: color-mix(in srgb, var(--col-color) 21%, var(--bg));
+  --card-border: color-mix(in srgb, var(--col-color) 28%, var(--bg));
+  --card-border-hover: color-mix(in srgb, var(--col-color) 45%, var(--bg));
+  --pill-bg: color-mix(in srgb, var(--col-color) 25%, var(--bg));
+  --pill-text: color-mix(in srgb, var(--col-color) 70%, var(--text));
+  --count-color: var(--col-color);
 }
 
 .column-tasks {
@@ -841,9 +866,9 @@ body {
   align-items: flex-start;
   gap: 4px;
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--card-border, var(--border));
   border-radius: 6px;
-  background: var(--bg);
+  background: var(--card-bg, var(--bg));
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   cursor: grab;
   touch-action: none;
@@ -851,7 +876,7 @@ body {
 }
 
 .task-card:hover {
-  border-color: var(--border-strong);
+  border-color: var(--card-border-hover, var(--border-strong));
 }
 
 .task-card:focus-visible {
@@ -866,11 +891,6 @@ body {
 
 .task-card.dragging {
   opacity: 0.4;
-}
-
-.column-done .task-title {
-  color: var(--muted);
-  text-decoration: line-through;
 }
 
 .overlay-card,
