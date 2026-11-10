@@ -221,6 +221,29 @@ body {
   outline: none;
 }
 
+.inline-input-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-input.multiline {
+  display: block;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+.input-counter {
+  margin-top: 2px;
+  font-size: 11px;
+  text-align: right;
+  color: var(--muted);
+}
+
+.input-counter.full {
+  color: var(--danger);
+}
+
 /* Сетка проектов */
 .project-grid {
   display: grid;
@@ -320,6 +343,11 @@ body {
 .new-card.editing {
   cursor: default;
   padding: 16px;
+}
+
+.new-card .inline-input-wrap {
+  flex: none;
+  width: 100%;
 }
 
 .new-card .plus {

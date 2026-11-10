@@ -31,7 +31,10 @@ const COLUMNS: { id: ColumnId; title: string }[] = [
   { id: "done", title: "Done" },
 ];
 
-const COLUMN_IDS = COLUMNS.map((c) => c.id) as string[];
+/** Лимит длины названия задачи. Должен совпадать с MAX_TITLE_CHARS в src-tauri/src/board.rs. */
+const TASK_TITLE_MAX = 2000;
+
+const COLUMN_IDS =COLUMNS.map((c) => c.id) as string[];
 
 /** Короткий уникальный id. crypto.randomUUID есть не во всех контекстах WebView, поэтому свой. */
 function newId(): string {
@@ -226,6 +229,8 @@ function Column({ id, title, tasks, onAdd, onRename, onDelete }: ColumnProps) {
         <div className="task-card editing">
           <InlineInput
             key={inputKey}
+            multiline
+            maxLength={TASK_TITLE_MAX}
             placeholder="Название задачи"
             onCommit={(value, via) => {
               onAdd(value);
@@ -270,6 +275,8 @@ function TaskCard({ task, onRename, onDelete }: TaskCardProps) {
     >
       {editing ? (
         <InlineInput
+          multiline
+          maxLength={TASK_TITLE_MAX}
           initial={task.title}
           onCommit={(title) => {
             setEditing(false);

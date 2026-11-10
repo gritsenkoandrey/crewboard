@@ -8,7 +8,8 @@ use std::fs;
 use std::io::ErrorKind;
 use tauri::AppHandle;
 
-const MAX_TITLE_CHARS: usize = 500;
+/// Должно совпадать с TASK_TITLE_MAX в src/components/Board.tsx.
+const MAX_TITLE_CHARS: usize = 2000;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Task {
