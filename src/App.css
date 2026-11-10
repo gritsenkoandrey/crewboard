@@ -474,3 +474,157 @@ body {
 .tab-content {
   padding-top: 20px;
 }
+
+/* Канбан-доска */
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.board-error {
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--bg-soft);
+}
+
+.column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 6px;
+  font-weight: 600;
+}
+
+.column-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--col-color);
+}
+
+.column-todo {
+  --col-color: #e85d5d;
+}
+
+.column-inProgress {
+  --col-color: #e9a93a;
+}
+
+.column-done {
+  --col-color: #48b878;
+}
+
+.column-count {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.column-tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Пустая колонка тоже должна принимать карточки. */
+  min-height: 40px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.column-tasks.drop-target {
+  background: var(--hover);
+}
+
+.task-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  cursor: grab;
+  touch-action: none;
+  line-height: 1.4;
+}
+
+.task-card:hover {
+  border-color: var(--border-strong);
+}
+
+.task-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.task-card.editing {
+  cursor: default;
+  padding: 4px;
+}
+
+.task-card.dragging {
+  opacity: 0.4;
+}
+
+.column-done .task-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.overlay-card {
+  cursor: grabbing;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  transform: rotate(2deg);
+}
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.task-delete {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: -2px -4px 0 0;
+  color: var(--muted);
+  opacity: 0;
+}
+
+.task-card:hover .task-delete,
+.task-delete:focus-visible {
+  opacity: 1;
+}
+
+.task-delete:hover {
+  color: var(--danger);
+}
+
+.add-task {
+  font: inherit;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.add-task:hover {
+  background: var(--hover);
+  color: var(--text);
+}

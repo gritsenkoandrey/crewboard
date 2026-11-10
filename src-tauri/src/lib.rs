@@ -1,3 +1,4 @@
+mod board;
 mod projects;
 
 use serde::{Deserialize, Serialize};
@@ -115,6 +116,8 @@ pub fn run() {
             projects::create_project,
             projects::rename_project,
             projects::delete_project,
+            board::get_board,
+            board::save_board,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

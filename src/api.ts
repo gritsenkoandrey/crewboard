@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Project } from "./types";
+import type { Board, Project } from "./types";
 
 export interface DataDirInfo {
   /** Путь из настроек, если папка уже выбиралась. */
@@ -32,6 +32,14 @@ export function renameProject(id: string, name: string): Promise<Project> {
 /** Перемещает папку проекта в корзину Windows. */
 export function deleteProject(id: string): Promise<void> {
   return invoke("delete_project", { id });
+}
+
+export function getBoard(id: string): Promise<Board> {
+  return invoke("get_board", { id });
+}
+
+export function saveBoard(id: string, board: Board): Promise<void> {
+  return invoke("save_board", { id, board });
 }
 
 /** Системный диалог выбора папки. Возвращает null, если пользователь его закрыл. */

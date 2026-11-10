@@ -4,8 +4,8 @@ interface Props {
   initial?: string;
   placeholder?: string;
   className?: string;
-  /** Enter или потеря фокуса. Пустое значение считается отменой. */
-  onCommit: (value: string) => void;
+  /** Enter или потеря фокуса. Пустое или неизменённое значение считается отменой. */
+  onCommit: (value: string, via: "enter" | "blur") => void;
   /** Escape. */
   onCancel: () => void;
 }
@@ -22,11 +22,11 @@ export default function InlineInput({ initial = "", placeholder, className, onCo
     ref.current?.select();
   }, []);
 
-  function finish(commit: boolean) {
+  function finish(via: "enter" | "blur" | null) {
     if (done.current) return;
     done.current = true;
     const trimmed = value.trim();
-    if (commit && trimmed && trimmed !== initial.trim()) onCommit(trimmed);
+    if (via && trimmed && trimmed !== initial.trim()) onCommit(trimmed, via);
     else onCancel();
   }
 
@@ -39,10 +39,10 @@ export default function InlineInput({ initial = "", placeholder, className, onCo
       maxLength={200}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
-        if (e.key === "Enter") finish(true);
-        else if (e.key === "Escape") finish(false);
+        if (e.key === "Enter") finish("enter");
+        else if (e.key === "Escape") finish(null);
       }}
-      onBlur={() => finish(true)}
+      onBlur={() => finish("blur")}
       onClick={(e) => e.stopPropagation()}
     />
   );

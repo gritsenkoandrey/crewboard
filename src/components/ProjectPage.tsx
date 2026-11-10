@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Project } from "../types";
+import Board from "./Board";
 import InlineInput from "./InlineInput";
 import ProjectCover from "./ProjectCover";
 
@@ -51,7 +52,7 @@ export default function ProjectPage({ project, onBack, onRename }: Props) {
 
       <div className="tab-content">
         {tab === "board" ? (
-          <div className="empty muted">Канбан-доска появится на следующем этапе.</div>
+          <Board projectId={project.id} />
         ) : (
           <div className="empty muted">Редактор документации появится позже.</div>
         )}

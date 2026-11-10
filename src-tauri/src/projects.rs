@@ -20,7 +20,7 @@ use tauri::AppHandle;
 const PROJECTS_DIR: &str = "projects";
 const META_FILE: &str = "project.json";
 const README_FILE: &str = "README.md";
-const BOARD_FILE: &str = "board.json";
+pub(crate) const BOARD_FILE: &str = "board.json";
 const MAX_NAME_CHARS: usize = 200;
 const MAX_SLUG_CHARS: usize = 40;
 
@@ -67,7 +67,7 @@ fn validate_name(name: &str) -> CmdResult<String> {
 }
 
 /// Папка проекта по id. id приходит из интерфейса, поэтому не пускаем его за пределы `projects\`.
-fn project_dir(app: &AppHandle, id: &str) -> CmdResult<PathBuf> {
+pub(crate) fn project_dir(app: &AppHandle, id: &str) -> CmdResult<PathBuf> {
     if id.is_empty() || id == "." || id == ".." || id.contains(['/', '\\', ':']) {
         return Err(format!("Некорректный id проекта: {id}"));
     }

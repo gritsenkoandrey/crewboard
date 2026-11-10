@@ -7,3 +7,13 @@ export interface Project {
   /** Полный путь к файлу обложки. */
   coverPath: string | null;
 }
+
+export interface Task {
+  id: string;
+  title: string;
+}
+
+/** Колонки доски. Ключи совпадают с полями board.json. */
+export type ColumnId = "todo" | "inProgress" | "done";
+
+export type Board = Record<ColumnId, Task[]>;
