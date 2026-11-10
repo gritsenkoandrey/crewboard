@@ -21,6 +21,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { getBoard, saveBoard } from "../api";
+import { trackSave } from "../saveTracker";
 import type { Board as BoardData, ColumnId, Task } from "../types";
 import InlineInput from "./InlineInput";
 
@@ -70,9 +71,7 @@ export default function Board({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   function persist(next: BoardData) {
-    saveQueue.current = saveQueue.current
-      .then(() => saveBoard(projectId, next))
-      .catch((e) => setError(`Не удалось сохранить доску: ${e}`));
+    saveQueue.current = trackSave(saveQueue.current.then(() => saveBoard(projectId, next))).catch((e) => setError(`Не удалось сохранить доску: ${e}`));
   }
 
   function update(next: BoardData) {

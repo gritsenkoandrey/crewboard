@@ -2,6 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, ty
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getReadme, saveReadme } from "../api";
 import { isExternalUrl, renderMarkdown } from "../markdown";
+import { registerFlusher, trackSave } from "../saveTracker";
 import MarkdownEditor from "./MarkdownEditor";
 
 type Mode = "view" | "split" | "edit";
@@ -61,9 +62,7 @@ export default function Docs({ projectId }: { projectId: string }) {
     if (value === null || value === saved.current) return;
     saved.current = value;
     setStatus("saving");
-    queue.current = queue.current
-      .then(() => saveReadme(projectId, value))
-      .then(
+    queue.current = trackSave(queue.current.then(() => saveReadme(projectId, value))).then(
         () => setStatus(latest.current === value ? "saved" : "pending"),
         (e) => {
           // Сохранение не прошло: следующая правка или Ctrl+S попробует снова.
@@ -74,8 +73,14 @@ export default function Docs({ projectId }: { projectId: string }) {
       );
   }, [projectId]);
 
-  // Уход со вкладки или из проекта — сохраняем несохранённое сразу.
-  useEffect(() => flush, [flush]);
+  // Уход со вкладки, из проекта или закрытие окна — сохраняем несохранённое сразу.
+  useEffect(() => {
+    const unregister = registerFlusher(flush);
+    return () => {
+      unregister();
+      flush();
+    };
+  }, [flush]);
 
   function onChange(value: string) {
     latest.current = value;

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { flushAll } from "./saveTracker";
 import {
   createProject,
   deleteProject,
@@ -34,6 +36,23 @@ export default function App() {
 
   useEffect(() => {
     getDataDir().then(setInfo, (e) => setError(String(e)));
+  }, []);
+
+  // Перед закрытием окна дописываем отложенные и незавершённые сохранения.
+  // Tauri ждёт завершения обработчика и только потом закрывает окно.
+  useEffect(() => {
+    let unlisten: Promise<(() => void) | undefined>;
+    try {
+      unlisten = getCurrentWindow()
+        .onCloseRequested(() => flushAll())
+        .catch(() => undefined);
+    } catch {
+      // Вне окна Tauri (например, в обычном браузере) подписаться не на что.
+      return;
+    }
+    return () => {
+      void unlisten.then((fn) => fn?.());
+    };
   }, []);
 
   // Список перечитываем при каждой смене папки данных.
