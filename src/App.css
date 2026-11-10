@@ -5,6 +5,8 @@
   --border-strong: #cfcfcb;
   --hover: rgba(55, 53, 47, 0.08);
   --hover-soft: rgba(55, 53, 47, 0.03);
+  --scrollbar: rgba(0, 0, 0, 0.15);
+  --scrollbar-hover: rgba(0, 0, 0, 0.28);
   --selection: rgba(35, 131, 226, 0.22);
   --font-mono: "Cascadia Code", Consolas, monospace;
   --text: #37352f;
@@ -29,6 +31,8 @@
     --border-strong: #454545;
     --hover: rgba(255, 255, 255, 0.08);
     --hover-soft: rgba(255, 255, 255, 0.03);
+    --scrollbar: rgba(255, 255, 255, 0.12);
+    --scrollbar-hover: rgba(255, 255, 255, 0.24);
     --selection: rgba(35, 131, 226, 0.35);
     --text: #e6e6e4;
     --muted: #8f8f8c;
@@ -49,6 +53,29 @@ body,
 
 body {
   background: var(--bg);
+}
+
+/* Тонкие неброские полосы прокрутки, как в md-reader: без стрелок и фона дорожки. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+  background-clip: content-box;
 }
 
 .muted {
@@ -550,7 +577,10 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding-top: 20px;
+  /* Отступа сверху здесь нет: закреплённая полоса фильтра прилипала бы ниже края,
+     и над ней просвечивали бы карточки. Отступ задают сами вкладки (.board-toolbar, .docs). */
+  /* Отступ от полосы прокрутки, чтобы кнопки и колонки в неё не упирались. */
+  padding-right: 12px;
 }
 
 /* Документация */
@@ -559,6 +589,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding-top: 20px;
 }
 
 .docs-toolbar {
@@ -771,7 +802,8 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 16px;
-  align-items: start;
+  /* Колонки одной высоты: пустое место под карточками короткой колонки тоже принимает перетаскивание. */
+  align-items: stretch;
 }
 
 .board-error {
@@ -787,13 +819,29 @@ body {
   padding: 10px;
   border-radius: 10px;
   background: var(--col-bg, var(--bg-soft));
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  transition: outline-color 0.15s;
 }
 
+/* Подсветка колонки, когда над её пустым местом держат карточку. */
+.column.drop-target {
+  outline-color: color-mix(in srgb, var(--col-color) 60%, transparent);
+}
+
+/* Заголовок колонки прилипает сразу под полосой фильтра. Фон — как у колонки,
+   а отрицательные поля перекрывают её внутренний отступ, чтобы карточки не выглядывали по краям. */
 .column-header {
+  position: sticky;
+  top: var(--toolbar-h, 0px);
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 2px 2px 6px;
+  margin: -10px -10px 0;
+  padding: 10px 12px 6px;
+  border-radius: 10px 10px 0 0;
+  background: var(--col-bg, var(--bg-soft));
 }
 
 /* Название колонки — плашка с цветной точкой. */
@@ -854,10 +902,6 @@ body {
   min-height: 40px;
   border-radius: 6px;
   transition: background 0.15s;
-}
-
-.column-tasks.drop-target {
-  background: var(--hover);
 }
 
 .task-card {
@@ -927,6 +971,493 @@ body {
 
 .task-delete:hover {
   color: var(--danger);
+}
+
+/* Метки */
+.task-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.label-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--label-color) 22%, var(--bg));
+  color: color-mix(in srgb, var(--label-color) 70%, var(--text));
+}
+
+.label-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label-pill-remove {
+  font: inherit;
+  padding: 0 0 0 4px;
+  border: none;
+  background: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.label-pill-remove:hover {
+  opacity: 1;
+}
+
+.label-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--label-color, var(--muted));
+}
+
+/* Выбор меток в панели задачи */
+.label-picker {
+  position: relative;
+}
+
+.label-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.label-picker-row .label-pill {
+  font-size: 13px;
+  padding: 2px 8px;
+}
+
+.label-add {
+  font: inherit;
+  font-size: 13px;
+  padding: 2px 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.label-add:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.label-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 280px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.label-search {
+  font: inherit;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-soft);
+  color: var(--text);
+  outline: none;
+}
+
+.label-search:focus {
+  border-color: var(--accent);
+}
+
+.label-options {
+  max-height: 240px;
+  overflow: auto;
+  margin-top: 4px;
+}
+
+.label-option {
+  font: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.label-option.active {
+  background: var(--hover);
+}
+
+.label-option.create {
+  color: var(--accent);
+}
+
+.label-option-check {
+  width: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.label-empty {
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+/* Фильтр над доской */
+.label-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+/* Полоса фильтра закреплена вверху области прокрутки: карточки уезжают под неё.
+   Отступ снизу — внутри полосы и с фоном, чтобы в зазоре не просвечивали карточки. */
+.board-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 20px 0 12px;
+  background: var(--bg);
+}
+
+.label-filter-title {
+  margin-right: 2px;
+}
+
+.filter-chip {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.filter-chip:hover {
+  border-color: var(--border-strong);
+}
+
+.filter-chip.active {
+  border-color: var(--label-color, var(--muted));
+  background: color-mix(in srgb, var(--label-color, var(--muted)) 20%, var(--bg));
+}
+
+.filter-chip.no-label {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.filter-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.manage-labels {
+  margin-left: auto;
+}
+
+/* Окно «Метки проекта» */
+.label-manager {
+  width: min(460px, calc(100% - 32px));
+}
+
+.label-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 50vh;
+  overflow: auto;
+  margin: 8px 0 12px;
+}
+
+.label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-cell {
+  position: relative;
+}
+
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  background: var(--label-color);
+  cursor: pointer;
+}
+
+.color-swatch.current {
+  border-color: var(--text);
+}
+
+.color-palette {
+  position: absolute;
+  top: 26px;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(5, 20px);
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+
+.label-name-input {
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  outline: none;
+}
+
+.label-name-input:hover {
+  background: var(--hover-soft);
+}
+
+.label-name-input:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.label-usage {
+  min-width: 24px;
+  text-align: right;
+  font-size: 12px;
+}
+
+.label-confirm {
+  display: flex;
+  gap: 4px;
+}
+
+.small-btn {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.label-create {
+  display: flex;
+  gap: 8px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.task-has-desc {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Панель задачи */
+.panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(0, 0, 0, 0.25);
+  animation: fade-in 0.12s ease-out;
+}
+
+.task-panel {
+  width: min(620px, 92vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 20px;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.2);
+  animation: slide-in 0.15s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+.panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.danger-hover:hover {
+  color: var(--danger);
+}
+
+/* Переключатель статуса: те же цвета, что у колонок. */
+.status-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.status-switch button {
+  font: inherit;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.status-switch button:hover {
+  color: var(--text);
+}
+
+.status-switch button.active {
+  border-color: transparent;
+  background: var(--pill-bg, var(--hover));
+  color: var(--pill-text, var(--text));
+  font-weight: 500;
+  cursor: default;
+}
+
+.panel-title {
+  font: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.3;
+  width: 100%;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  resize: none;
+  overflow: hidden;
+  outline: none;
+}
+
+.panel-title:hover {
+  background: var(--hover-soft);
+}
+
+.panel-title:focus {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.panel-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.panel-error {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.panel-editor {
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.panel-editor .cm-content {
+  padding: 12px 14px 60px;
+}
+
+.panel-preview {
+  cursor: text;
+  padding-bottom: 40px;
+}
+
+.panel-empty {
+  font: inherit;
+  width: 100%;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  text-align: left;
+  cursor: text;
+}
+
+.panel-empty:hover {
+  color: var(--text);
+  background: var(--hover-soft);
 }
 
 .add-task {

@@ -61,7 +61,7 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
 
       <div className="tab-content">
         {tab === "board" ? (
-          <Board projectId={project.id} />
+          <Board projectId={project.id} projectDir={project.dir} />
         ) : (
           <Docs projectId={project.id} />
         )}

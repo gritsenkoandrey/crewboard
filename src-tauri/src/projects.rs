@@ -45,6 +45,8 @@ pub struct Project {
     created_at: u64,
     /// Полный путь к обложке, если она есть и файл на месте.
     cover_path: Option<String>,
+    /// Полный путь к папке проекта: относительно неё открываются картинки из markdown.
+    dir: String,
 }
 
 pub fn projects_root(data: &Path) -> PathBuf {
@@ -128,7 +130,13 @@ fn to_project(dir: &Path, meta: ProjectMeta) -> Project {
         .map(|file| dir.join(file))
         .filter(|path| path.is_file())
         .map(|path| path.to_string_lossy().into_owned());
-    Project { id, name: meta.name, created_at: meta.created_at, cover_path }
+    Project {
+        id,
+        name: meta.name,
+        created_at: meta.created_at,
+        cover_path,
+        dir: dir.to_string_lossy().into_owned(),
+    }
 }
 
 /// Читает проект. Папку без project.json (или с повреждённым) всё равно показываем,

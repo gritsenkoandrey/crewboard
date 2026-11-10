@@ -6,14 +6,30 @@ export interface Project {
   createdAt: number;
   /** Полный путь к файлу обложки. */
   coverPath: string | null;
+  /** Полный путь к папке проекта. */
+  dir: string;
 }
 
 export interface Task {
   id: string;
   title: string;
+  /** Описание в markdown. В файле отсутствует, если пустое. */
+  description?: string;
+  /** id меток проекта. В файле отсутствует, если меток нет. */
+  labels?: string[];
+}
+
+export interface Label {
+  id: string;
+  name: string;
+  /** Ключ цвета из палитры (src/labels.ts). */
+  color: string;
 }
 
 /** Колонки доски. Ключи совпадают с полями board.json. */
 export type ColumnId = "todo" | "inProgress" | "done";
 
-export type Board = Record<ColumnId, Task[]>;
+export type Board = Record<ColumnId, Task[]> & {
+  /** Метки проекта. В старых файлах может отсутствовать. */
+  labels?: Label[];
+};

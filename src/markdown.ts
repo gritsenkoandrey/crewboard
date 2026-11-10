@@ -1,12 +1,28 @@
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import type { MouseEvent } from "react";
 
 const md = new MarkdownIt({ html: true, linkify: true, breaks: false });
 
 /** Ссылка ведёт наружу (сайт, почта), а не на файл рядом с документом. */
 export function isExternalUrl(url: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(url) && !/^[a-z]:[\\/]/i.test(url);
+}
+
+/**
+ * Обработчик клика по отрисованному markdown. Ссылки не должны открываться внутри окна
+ * приложения: внешние (http, https, mailto) уходят в системный браузер, остальные игнорируем.
+ */
+export function handleMarkdownClick(e: MouseEvent, onError: (message: string) => void) {
+  const link = (e.target as HTMLElement).closest("a");
+  if (!link) return;
+  e.preventDefault();
+  const href = link.getAttribute("href") ?? "";
+  if (/^(https?|mailto):/i.test(href)) {
+    openUrl(href).catch((err) => onError(`Не удалось открыть ссылку: ${err}`));
+  }
 }
 
 /** Склеивает папку и относительный путь, раскрывая `.` и `..`. */

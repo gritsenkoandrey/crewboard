@@ -1,7 +1,6 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { getReadme, saveReadme } from "../api";
-import { isExternalUrl, renderMarkdown } from "../markdown";
+import { handleMarkdownClick, renderMarkdown } from "../markdown";
 import { registerFlusher, trackSave } from "../saveTracker";
 import MarkdownEditor from "./MarkdownEditor";
 
@@ -103,17 +102,6 @@ export default function Docs({ projectId }: { projectId: string }) {
   const deferredText = useDeferredValue(text);
   const html = useMemo(() => (deferredText === null ? "" : renderMarkdown(deferredText, dir)), [deferredText, dir]);
 
-  // Ссылки не должны открываться внутри окна приложения: внешние — в браузере, остальные игнорируем.
-  function onPreviewClick(e: MouseEvent) {
-    const link = (e.target as HTMLElement).closest("a");
-    if (!link) return;
-    e.preventDefault();
-    const href = link.getAttribute("href") ?? "";
-    if (isExternalUrl(href) && /^(https?|mailto):/i.test(href)) {
-      openUrl(href).catch((err) => setError(`Не удалось открыть ссылку: ${err}`));
-    }
-  }
-
   if (text === null) {
     return error ? <div className="error">{error}</div> : <div className="muted">Загрузка…</div>;
   }
@@ -165,7 +153,7 @@ export default function Docs({ projectId }: { projectId: string }) {
                 )}
               </div>
             ) : (
-              <article className="markdown" onClick={onPreviewClick} dangerouslySetInnerHTML={{ __html: html }} />
+              <article className="markdown" onClick={(e) => handleMarkdownClick(e, setError)} dangerouslySetInnerHTML={{ __html: html }} />
             )}
           </div>
         )}
