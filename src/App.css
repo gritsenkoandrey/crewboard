@@ -1,0 +1,149 @@
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f7f5;
+  --border: #e6e6e3;
+  --text: #37352f;
+  --muted: #8a8984;
+  --accent: #2383e2;
+  --accent-hover: #1a6fc2;
+  --danger: #d44c47;
+  --warning-bg: #fbf3db;
+
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #191919;
+    --bg-soft: #202020;
+    --border: #2f2f2f;
+    --text: #e6e6e4;
+    --muted: #8f8f8c;
+    --warning-bg: #3a3320;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.center {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: var(--bg-soft);
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+/* Экран выбора папки */
+.setup {
+  max-width: 460px;
+  padding: 32px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.setup h1 {
+  margin: 0 0 16px;
+}
+
+.warning {
+  background: var(--warning-bg);
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.warning code {
+  word-break: break-all;
+}
+
+.error {
+  color: var(--danger);
+}
+
+/* Основной экран */
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo {
+  margin: 0;
+  font-size: 16px;
+}
+
+.data-dir {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error-bar {
+  padding: 8px 20px;
+  color: var(--danger);
+  border-bottom: 1px solid var(--border);
+}
+
+.content {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+}
+
+.empty {
+  text-align: center;
+  margin-top: 80px;
+}
