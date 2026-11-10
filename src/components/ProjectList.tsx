@@ -9,12 +9,22 @@ interface Props {
   onOpen: (id: string) => void;
   onCreate: (name: string) => Promise<void>;
   onRename: (id: string, name: string) => Promise<void>;
+  onChangeCover: (id: string) => Promise<void>;
+  onRemoveCover: (id: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
 
 const dateFormat = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 
-export default function ProjectList({ projects, onOpen, onCreate, onRename, onDelete }: Props) {
+export default function ProjectList({
+  projects,
+  onOpen,
+  onCreate,
+  onRename,
+  onChangeCover,
+  onRemoveCover,
+  onDelete,
+}: Props) {
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -88,6 +98,24 @@ export default function ProjectList({ projects, onOpen, onCreate, onRename, onDe
               >
                 Переименовать
               </button>
+              <button
+                onClick={() => {
+                  setMenuId(null);
+                  void onChangeCover(project.id);
+                }}
+              >
+                {project.coverPath ? "Сменить обложку" : "Добавить обложку"}
+              </button>
+              {project.coverPath && (
+                <button
+                  onClick={() => {
+                    setMenuId(null);
+                    void onRemoveCover(project.id);
+                  }}
+                >
+                  Убрать обложку
+                </button>
+              )}
               <button
                 className="danger-text"
                 onClick={() => {

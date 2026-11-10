@@ -5,7 +5,10 @@ import {
   getDataDir,
   listProjects,
   pickFolder,
+  pickImage,
+  removeCover,
   renameProject,
+  setCover,
   setDataDir,
   type DataDirInfo,
 } from "./api";
@@ -62,6 +65,17 @@ export default function App() {
     setProjects((list) => list.map((p) => (p.id === updated.id ? updated : p)));
   }
 
+  function changeCover(id: string) {
+    return run(async () => {
+      const source = await pickImage();
+      if (source) replaceProject(await setCover(id, source));
+    });
+  }
+
+  function deleteCover(id: string) {
+    return run(async () => replaceProject(await removeCover(id)));
+  }
+
   if (!info) {
     return <div className="center muted">{error ?? "Загрузка…"}</div>;
   }
@@ -100,6 +114,8 @@ export default function App() {
             project={openProject}
             onBack={() => setOpenId(null)}
             onRename={(name) => run(async () => replaceProject(await renameProject(openProject.id, name)))}
+            onChangeCover={() => changeCover(openProject.id)}
+            onRemoveCover={() => deleteCover(openProject.id)}
           />
         ) : (
           <ProjectList
@@ -112,6 +128,8 @@ export default function App() {
               })
             }
             onRename={(id, name) => run(async () => replaceProject(await renameProject(id, name)))}
+            onChangeCover={changeCover}
+            onRemoveCover={deleteCover}
             onDelete={(id) =>
               run(async () => {
                 await deleteProject(id);

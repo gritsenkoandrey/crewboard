@@ -183,6 +183,62 @@ pub fn rename_project(app: AppHandle, id: String, name: String) -> CmdResult<Pro
     Ok(to_project(&dir, meta))
 }
 
+/// Форматы, которые умеет показывать WebView2.
+const COVER_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"];
+const MAX_COVER_BYTES: u64 = 30 * 1024 * 1024;
+
+/// Удаляет файл старой обложки, если он лежит внутри папки проекта.
+fn remove_cover_file(dir: &Path, meta: &ProjectMeta) {
+    if let Some(file) = &meta.cover {
+        // Имя из project.json могли поправить руками: не даём выйти за пределы папки проекта.
+        if !file.contains(['/', '\\']) && file != ".." {
+            let _ = fs::remove_file(dir.join(file));
+        }
+    }
+}
+
+/// Копирует картинку в папку проекта и делает её обложкой. Имя файла каждый раз новое
+/// (`cover-<время>.png`), чтобы WebView не показывал старую картинку из кеша.
+#[tauri::command]
+pub fn set_cover(app: AppHandle, id: String, source: String) -> CmdResult<Project> {
+    let dir = project_dir(&app, &id)?;
+    let source = PathBuf::from(source);
+    let ext = source
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .filter(|e| COVER_EXTENSIONS.contains(&e.as_str()))
+        .ok_or_else(|| format!("Поддерживаются картинки: {}", COVER_EXTENSIONS.join(", ")))?;
+    let size = fs::metadata(&source).map_err(|e| format!("Не удалось открыть файл: {e}"))?.len();
+    if size > MAX_COVER_BYTES {
+        return Err(format!("Картинка больше {} МБ", MAX_COVER_BYTES / 1024 / 1024));
+    }
+
+    let file_name = format!("cover-{}.{ext}", now_ms());
+    fs::copy(&source, dir.join(&file_name)).map_err(|e| format!("Не удалось скопировать картинку: {e}"))?;
+
+    let mut meta = read_meta(&dir).unwrap_or_else(|| ProjectMeta {
+        name: id.clone(),
+        created_at: now_ms(),
+        cover: None,
+    });
+    remove_cover_file(&dir, &meta);
+    meta.cover = Some(file_name);
+    write_meta(&dir, &meta)?;
+    Ok(to_project(&dir, meta))
+}
+
+#[tauri::command]
+pub fn remove_cover(app: AppHandle, id: String) -> CmdResult<Project> {
+    let dir = project_dir(&app, &id)?;
+    let Some(mut meta) = read_meta(&dir) else {
+        return Ok(load_project(&dir));
+    };
+    remove_cover_file(&dir, &meta);
+    meta.cover = None;
+    write_meta(&dir, &meta)?;
+    Ok(to_project(&dir, meta))
+}
+
 /// Удаляет проект в корзину Windows, чтобы случайное удаление можно было отменить.
 #[tauri::command]
 pub fn delete_project(app: AppHandle, id: String) -> CmdResult<()> {

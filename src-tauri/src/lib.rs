@@ -119,6 +119,8 @@ pub fn run() {
             projects::create_project,
             projects::rename_project,
             projects::delete_project,
+            projects::set_cover,
+            projects::remove_cover,
             board::get_board,
             board::save_board,
             docs::get_readme,

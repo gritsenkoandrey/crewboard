@@ -56,6 +56,25 @@ export function saveReadme(id: string, text: string): Promise<void> {
   return invoke("save_readme", { id, text });
 }
 
+/** Копирует картинку в папку проекта и делает её обложкой. */
+export function setCover(id: string, source: string): Promise<Project> {
+  return invoke("set_cover", { id, source });
+}
+
+export function removeCover(id: string): Promise<Project> {
+  return invoke("remove_cover", { id });
+}
+
+/** Диалог выбора картинки для обложки. Возвращает null, если пользователь его закрыл. */
+export async function pickImage(): Promise<string | null> {
+  const result = await open({
+    multiple: false,
+    title: "Обложка проекта",
+    filters: [{ name: "Картинки", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"] }],
+  });
+  return typeof result === "string" ? result : null;
+}
+
 /** Системный диалог выбора папки. Возвращает null, если пользователь его закрыл. */
 export async function pickFolder(defaultPath?: string): Promise<string | null> {
   const result = await open({ directory: true, multiple: false, defaultPath, title: "Папка с данными Task Track" });

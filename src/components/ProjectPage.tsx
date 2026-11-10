@@ -11,16 +11,24 @@ interface Props {
   project: Project;
   onBack: () => void;
   onRename: (name: string) => Promise<void>;
+  onChangeCover: () => Promise<void>;
+  onRemoveCover: () => Promise<void>;
 }
 
-export default function ProjectPage({ project, onBack, onRename }: Props) {
+export default function ProjectPage({ project, onBack, onRename, onChangeCover, onRemoveCover }: Props) {
   const [tab, setTab] = useState<Tab>("board");
   const [renaming, setRenaming] = useState(false);
 
   return (
     <div className="project-page">
       <div className="project-header">
-        <ProjectCover project={project} className="header-cover" />
+        <div className="header-cover-wrap">
+          <ProjectCover project={project} className="header-cover" />
+          <div className="cover-actions">
+            <button onClick={() => void onChangeCover()}>{project.coverPath ? "Сменить" : "Добавить обложку"}</button>
+            {project.coverPath && <button onClick={() => void onRemoveCover()}>Убрать</button>}
+          </div>
+        </div>
         <div className="project-header-main">
           <button className="link-btn" onClick={onBack}>
             ← Все проекты
