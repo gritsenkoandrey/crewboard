@@ -582,10 +582,15 @@ body {
   text-decoration: line-through;
 }
 
+.overlay-card,
+.overlay-card:hover {
+  border-color: #48b878;
+  outline: 1px solid #48b878;
+}
+
 .overlay-card {
   cursor: grabbing;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  transform: rotate(2deg);
 }
 
 .task-title {
