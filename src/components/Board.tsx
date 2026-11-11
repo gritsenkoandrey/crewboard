@@ -1,3 +1,4 @@
+import Icon from "./Icon";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   DndContext,
@@ -23,12 +24,14 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { getBoard, saveBoard } from "../api";
+import { stampBoard, taskCode, setTaskArchived } from "../taskMetadata";
 import { trackSave } from "../saveTracker";
 import { LabelPill, nextLabelColor } from "../labels";
 import type { Board as BoardData, ColumnId, Label, Task } from "../types";
 import InlineInput from "./InlineInput";
 import LabelFilter, { NO_LABEL } from "./LabelFilter";
 import LabelManager from "./LabelManager";
+import TaskArchive from "./TaskArchive";
 import TaskPanel, { type TaskPatch } from "./TaskPanel";
 
 const COLUMNS: { id: ColumnId; title: string }[] = [
@@ -74,6 +77,8 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Set<string>>(() => loadFilter(projectId));
   const [managingLabels, setManagingLabels] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archivedNotice, setArchivedNotice] = useState<string | null>(null);
   // Высота закреплённой полосы фильтра: под ней прилипают заголовки колонок.
   // Меряем по факту, потому что метки могут переноситься на несколько строк.
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
@@ -116,7 +121,8 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     saveQueue.current = trackSave(saveQueue.current.then(() => saveBoard(projectId, next))).catch((e) => setError(`Не удалось сохранить доску: ${e}`));
   }
 
-  function update(next: BoardData) {
+  function update(next: BoardData, previous = boardRef.current) {
+    if (previous) next = stampBoard(previous, next);
     boardRef.current = next;
     setBoard(next);
     persist(next);
@@ -143,6 +149,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   // (или у неё нет меток, когда выбрано «без меток»).
   const activeFilter = new Set([...filter].filter((k) => k === NO_LABEL || labels.some((l) => l.id === k)));
   const isVisible = (task: Task) => {
+    if (task.archived) return false;
     if (activeFilter.size === 0) return true;
     const own = task.labels ?? [];
     return own.length === 0 ? activeFilter.has(NO_LABEL) : own.some((id) => activeFilter.has(id));
@@ -151,9 +158,28 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   // Сколько задач с каждой меткой и без меток — для фильтра и окна меток.
   const counts = new Map<string, number>();
   for (const task of COLUMNS.flatMap((c) => current[c.id])) {
+    if (task.archived) continue;
     const own = task.labels ?? [];
     if (own.length === 0) counts.set(NO_LABEL, (counts.get(NO_LABEL) ?? 0) + 1);
     for (const id of own) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  const archivedTasks = COLUMNS.flatMap((c) => current[c.id].filter((t) => t.archived).map((task) => ({ task, column: c.id, status: c.title })));
+  // Управление метками учитывает и архив: удаление метки затрагивает все задачи.
+  const labelUsage = new Map<string, number>();
+  for (const task of COLUMNS.flatMap((c) => current[c.id])) {
+    for (const id of task.labels ?? []) labelUsage.set(id, (labelUsage.get(id) ?? 0) + 1);
+  }
+
+  function archiveTask(id: string) {
+    change((b) => setTaskArchived(b, id, true));
+    setOpenTaskId(null);
+    setArchivedNotice(id);
+  }
+
+  function restoreTask(id: string) {
+    change((b) => setTaskArchived(b, id, false));
+    if (archivedNotice === id) setArchivedNotice(null);
   }
 
   function addTask(column: ColumnId, title: string) {
@@ -163,10 +189,10 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     change((b) => ({ ...b, [column]: [...b[column], task] }));
   }
 
-  function createLabel(name: string, assignTo?: string) {
+  function createLabel(name: string, assignTo?: string, color?: string) {
     change((b) => {
       const existing = b.labels ?? [];
-      const label: Label = { id: newId(), name, color: nextLabelColor(existing) };
+      const label: Label = { id: newId(), name, color: color ?? nextLabelColor(existing) };
       let next: BoardData = { ...b, labels: [...existing, label] };
       const column = assignTo ? findColumn(next, assignTo) : null;
       if (column) {
@@ -267,7 +293,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
       setBoard(next);
       return;
     }
-    update(next);
+    update(next, before ?? current);
   }
 
   function onDragCancel() {
@@ -277,6 +303,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   }
 
   const activeTask = activeId ? COLUMNS.flatMap((c) => current[c.id]).find((t) => t.id === activeId) : undefined;
+  const activeColumn = activeId ? findColumn(current, activeId) : null;
   const openColumn = openTaskId ? findColumn(current, openTaskId) : null;
   const openTask = openColumn ? current[openColumn].find((t) => t.id === openTaskId) : undefined;
 
@@ -286,8 +313,8 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
         <div className="error-bar board-error">
           <span>{error}</span>
           <button className="icon-btn" title="Закрыть" onClick={() => setError(null)}>
-            ×
-          </button>
+                <Icon name="close" />
+              </button>
         </div>
       )}
       <div ref={setToolbar} className="board-toolbar">
@@ -304,6 +331,9 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
           onClear={() => changeFilter(new Set())}
           onManage={() => setManagingLabels(true)}
         />
+        <button className="btn archive-button" title="Открыть архив" onClick={() => setArchiveOpen(true)}>
+          <Icon name="archive" /> Архив <span className="archive-count">{archivedTasks.length}</span>
+        </button>
       </div>
       <DndContext
         sensors={sensors}
@@ -319,8 +349,9 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
               key={column.id}
               id={column.id}
               title={column.title}
+              taskPrefix={current.taskPrefix}
               tasks={current[column.id].filter(isVisible)}
-              total={current[column.id].length}
+              total={current[column.id].filter((t) => !t.archived).length}
               labels={labels}
               onAdd={(title) => addTask(column.id, title)}
               onOpen={setOpenTaskId}
@@ -328,13 +359,14 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
             />
           ))}
         </div>
-        <DragOverlay>{activeTask && <div className="task-card overlay-card">{activeTask.title}</div>}</DragOverlay>
+        <DragOverlay>{activeTask && <div className={`task-card overlay-card column-${activeColumn}`}><div className="task-body"><span className="task-code">{taskCode(current.taskPrefix, activeTask.number)}</span><span>{activeTask.title}</span></div></div>}</DragOverlay>
       </DndContext>
 
       {openTask && openColumn && (
         <TaskPanel
           key={openTask.id}
           task={openTask}
+          taskCode={taskCode(current.taskPrefix, openTask.number)}
           column={openColumn}
           columns={COLUMNS}
           projectDir={projectDir}
@@ -344,16 +376,31 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
           onSetLabels={(ids) => updateTask(openTask.id, { labels: ids })}
           onCreateLabel={(name) => createLabel(name, openTask.id)}
           onMove={(to) => moveTask(openTask.id, to)}
+          onArchive={() => archiveTask(openTask.id)}
+          onRestore={() => restoreTask(openTask.id)}
           onDelete={() => deleteTask(openTask.id)}
           onClose={() => setOpenTaskId(null)}
         />
       )}
 
+      {archiveOpen && (
+        <TaskArchive tasks={archivedTasks} prefix={current.taskPrefix} labels={labels}
+          onRestore={restoreTask}
+          onOpen={(id) => { setArchiveOpen(false); setOpenTaskId(id); }}
+          onClose={() => setArchiveOpen(false)} />
+      )}
+      {archivedNotice && (
+        <div className="archive-toast" role="status">
+          <span>Задача перемещена в архив</span>
+          <button className="link-btn" onClick={() => restoreTask(archivedNotice)}>Отменить</button>
+          <button className="icon-btn" aria-label="Закрыть уведомление" onClick={() => setArchivedNotice(null)}><Icon name="close" /></button>
+        </div>
+      )}
       {managingLabels && (
         <LabelManager
           labels={labels}
-          usage={counts}
-          onCreate={(name) => createLabel(name)}
+          usage={labelUsage}
+          onCreate={(name, color) => createLabel(name, undefined, color)}
           onUpdate={updateLabel}
           onDelete={deleteLabel}
           onClose={() => setManagingLabels(false)}
@@ -388,6 +435,7 @@ function saveFilter(projectId: string, filter: Set<string>) {
 interface ColumnProps {
   id: ColumnId;
   title: string;
+  taskPrefix: string;
   /** Видимые задачи (с учётом фильтра). */
   tasks: Task[];
   /** Всего задач в колонке. */
@@ -398,7 +446,7 @@ interface ColumnProps {
   onDelete: (id: string) => void;
 }
 
-function Column({ id, title, tasks, total, labels, onAdd, onOpen, onDelete }: ColumnProps) {
+function Column({ id, title, taskPrefix, tasks, total, labels, onAdd, onOpen, onDelete }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [adding, setAdding] = useState(false);
   // Новый key пересоздаёт поле ввода после Enter, чтобы сразу вводить следующую задачу.
@@ -424,6 +472,7 @@ function Column({ id, title, tasks, total, labels, onAdd, onOpen, onDelete }: Co
             <TaskCard
               key={task.id}
               task={task}
+              code={taskCode(taskPrefix, task.number)}
               labels={labels}
               onOpen={() => onOpen(task.id)}
               onDelete={() => onDelete(task.id)}
@@ -457,13 +506,14 @@ function Column({ id, title, tasks, total, labels, onAdd, onOpen, onDelete }: Co
 }
 
 interface TaskCardProps {
+  code: string;
   task: Task;
   labels: Label[];
   onOpen: () => void;
   onDelete: () => void;
 }
 
-function TaskCard({ task, labels, onOpen, onDelete }: TaskCardProps) {
+function TaskCard({ task, code, labels, onOpen, onDelete }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
   const style = { transform: CSS.Translate.toString(transform), transition };
@@ -482,6 +532,7 @@ function TaskCard({ task, labels, onOpen, onDelete }: TaskCardProps) {
       {...listeners}
     >
       <div className="task-body">
+        <span className="task-code">{code}</span>
         <span className="task-title">
           {task.title}
           {hasDescription && (
@@ -509,8 +560,8 @@ function TaskCard({ task, labels, onOpen, onDelete }: TaskCardProps) {
           onDelete();
         }}
       >
-        ×
-      </button>
+                <Icon name="close" />
+              </button>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import Icon from "./Icon";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Project } from "../types";
 import ConfirmDialog from "./ConfirmDialog";
@@ -86,7 +87,7 @@ export default function ProjectList({
               setMenuId(menuId === project.id ? null : project.id);
             }}
           >
-            ⋯
+            <Icon name="more" />
           </button>
           {menuId === project.id && (
             <Menu onClose={() => setMenuId(null)}>

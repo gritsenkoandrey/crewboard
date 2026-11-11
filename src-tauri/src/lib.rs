@@ -123,8 +123,16 @@ pub fn run() {
             projects::remove_cover,
             board::get_board,
             board::save_board,
-            docs::get_readme,
-            docs::save_readme,
+            docs::link_document,
+            docs::unlink_document,
+            docs::document_revisions,
+            docs::list_documents,
+            docs::create_document,
+            docs::rename_document,
+            docs::reorder_documents,
+            docs::get_document,
+            docs::save_document,
+            docs::delete_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -19,7 +19,6 @@ use tauri::AppHandle;
 
 const PROJECTS_DIR: &str = "projects";
 const META_FILE: &str = "project.json";
-pub(crate) const README_FILE: &str = "README.md";
 pub(crate) const BOARD_FILE: &str = "board.json";
 const MAX_NAME_CHARS: usize = 200;
 const MAX_SLUG_CHARS: usize = 40;
@@ -176,8 +175,8 @@ pub fn create_project(app: AppHandle, name: String) -> CmdResult<Project> {
 
     let meta = ProjectMeta { name: name.clone(), created_at: now_ms(), cover: None };
     write_meta(&dir, &meta)?;
-    write_atomic(&dir.join(README_FILE), &format!("# {name}\n"))?;
-    write_atomic(&dir.join(BOARD_FILE), "{\n  \"todo\": [],\n  \"inProgress\": [],\n  \"done\": []\n}\n")?;
+    let board_text = serde_json::to_string_pretty(&crate::board::new_board()).map_err(|e| e.to_string())?;
+    write_atomic(&dir.join(BOARD_FILE), &(board_text + "\n"))?;
     Ok(to_project(&dir, meta))
 }
 

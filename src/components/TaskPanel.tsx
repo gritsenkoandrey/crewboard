@@ -1,3 +1,4 @@
+import Icon from "./Icon";
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { handleMarkdownClick, renderMarkdown } from "../markdown";
 import { registerFlusher } from "../saveTracker";
@@ -10,6 +11,7 @@ export type TaskPatch = Partial<Pick<Task, "title" | "description" | "labels">>;
 
 interface Props {
   task: Task;
+  taskCode: string;
   column: ColumnId;
   columns: { id: ColumnId; title: string }[];
   /** Папка проекта: относительно неё открываются картинки в описании. */
@@ -22,6 +24,8 @@ interface Props {
   onSetLabels: (ids: string[]) => void;
   onCreateLabel: (name: string) => void;
   onMove: (column: ColumnId) => void;
+  onArchive: () => void;
+  onRestore: () => void;
   onDelete: () => void;
   onClose: () => void;
 }
@@ -35,6 +39,7 @@ const AUTOSAVE_MS = 500;
  */
 export default function TaskPanel({
   task,
+  taskCode,
   column,
   columns,
   projectDir,
@@ -44,6 +49,8 @@ export default function TaskPanel({
   onSetLabels,
   onCreateLabel,
   onMove,
+  onArchive,
+  onRestore,
   onDelete,
   onClose,
 }: Props) {
@@ -126,6 +133,7 @@ export default function TaskPanel({
                 <button
                   key={c.id}
                   className={`column-${c.id} ${c.id === column ? "active" : ""}`}
+                  disabled={task.archived}
                   onClick={() => c.id !== column && onMove(c.id)}
                 >
                   <span className="column-dot" />
@@ -134,15 +142,24 @@ export default function TaskPanel({
               ))}
             </div>
             <div className="panel-actions">
+              <button className="icon-btn" title={task.archived ? "Восстановить" : "В архив"} aria-label={task.archived ? "Восстановить задачу" : "В архив"}
+                onClick={() => { flush(); task.archived ? onRestore() : onArchive(); }}>
+                <Icon name={task.archived ? "restore" : "archive"} />
+              </button>
               <button className="icon-btn danger-hover" title="Удалить задачу" onClick={() => setConfirmDelete(true)}>
-                🗑
+                <Icon name="trash" />
               </button>
               <button className="icon-btn" title="Закрыть (Esc)" onClick={onClose}>
-                ×
+                <Icon name="close" />
               </button>
             </div>
           </div>
   
+          {task.archived && <span className="muted small">Задача в архиве</span>}
+          <div className="task-metadata">
+            <span className="task-code">{taskCode}</span>
+            <span className="muted">Изменена: {task.updatedAt ? <time dateTime={new Date(task.updatedAt).toISOString()}>{new Date(task.updatedAt).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })}</time> : "неизвестно"}</span>
+          </div>
           <textarea
             ref={titleRef}
             className="panel-title"
@@ -183,7 +200,7 @@ export default function TaskPanel({
             <div className="error-bar panel-error">
               <span>{error}</span>
               <button className="icon-btn" title="Закрыть" onClick={() => setError(null)}>
-                ×
+                <Icon name="close" />
               </button>
             </div>
           )}

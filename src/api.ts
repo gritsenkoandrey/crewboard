@@ -42,19 +42,15 @@ export function saveBoard(id: string, board: Board): Promise<void> {
   return invoke("save_board", { id, board });
 }
 
-export interface Readme {
-  text: string;
-  /** Папка проекта: относительно неё открываются картинки. */
-  dir: string;
-}
-
-export function getReadme(id: string): Promise<Readme> {
-  return invoke("get_readme", { id });
-}
-
-export function saveReadme(id: string, text: string): Promise<void> {
-  return invoke("save_readme", { id, text });
-}
+export interface ProjectDocument { id: string; name: string; file: string; externalPath?: string }
+export interface DocumentContent { text: string; dir: string; revision: string }
+export function listDocuments(id: string): Promise<ProjectDocument[]> { return invoke("list_documents", { id }); }
+export function createDocument(id: string, name: string): Promise<ProjectDocument[]> { return invoke("create_document", { id, name }); }
+export function renameDocument(id: string, documentId: string, name: string): Promise<ProjectDocument[]> { return invoke("rename_document", { id, documentId, name }); }
+export function reorderDocuments(id: string, documentIds: string[]): Promise<ProjectDocument[]> { return invoke("reorder_documents", { id, documentIds }); }
+export function getDocument(id: string, documentId: string): Promise<DocumentContent> { return invoke("get_document", { id, documentId }); }
+export function saveDocument(id: string, documentId: string, text: string, baseText: string): Promise<string> { return invoke("save_document", { id, documentId, text, baseText }); }
+export function deleteDocument(id: string, documentId: string): Promise<ProjectDocument[]> { return invoke("delete_document", { id, documentId }); }
 
 /** Копирует картинку в папку проекта и делает её обложкой. */
 export function setCover(id: string, source: string): Promise<Project> {
@@ -79,4 +75,13 @@ export async function pickImage(): Promise<string | null> {
 export async function pickFolder(defaultPath?: string): Promise<string | null> {
   const result = await open({ directory: true, multiple: false, defaultPath, title: "Папка с данными Task Track" });
   return typeof result === "string" ? result : null;
+}
+
+export interface DocumentRevision { id: string; revision: string | null; error: string | null }
+export function documentRevisions(id: string): Promise<DocumentRevision[]> { return invoke("document_revisions", { id }); }
+export function linkDocument(id: string, source: string, documentId?: string): Promise<ProjectDocument[]> { return invoke("link_document", { id, source, documentId: documentId ?? null }); }
+export function unlinkDocument(id: string, documentId: string): Promise<ProjectDocument[]> { return invoke("unlink_document", { id, documentId }); }
+export async function pickMarkdown(): Promise<string | null> {
+  const file = await open({ multiple: false, title: "Подключить Markdown-файл", filters: [{ name: "Markdown", extensions: ["md"] }] });
+  return typeof file === "string" ? file : null;
 }

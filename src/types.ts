@@ -11,6 +11,11 @@ export interface Project {
 }
 
 export interface Task {
+  /** Архивная задача остаётся в исходной колонке. */
+  archived?: boolean;
+  number?: number;
+  /** Единственная дата задачи: создание или последнее изменение, в мс. */
+  updatedAt?: number;
   id: string;
   title: string;
   /** Описание в markdown. В файле отсутствует, если пустое. */
@@ -30,6 +35,8 @@ export interface Label {
 export type ColumnId = "todo" | "inProgress" | "done";
 
 export type Board = Record<ColumnId, Task[]> & {
+  taskPrefix: string;
+  nextTaskNumber: number;
   /** Метки проекта. В старых файлах может отсутствовать. */
   labels?: Label[];
 };

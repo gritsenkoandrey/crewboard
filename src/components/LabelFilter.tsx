@@ -18,7 +18,17 @@ interface Props {
 export default function LabelFilter({ labels, counts, selected, onToggle, onClear, onManage }: Props) {
   return (
     <div className="label-filter">
-      <span className="muted label-filter-title">Метки:</span>
+      <span className="label-filter-heading">
+        <span className="muted label-filter-title">Метки:</span>
+        <button type="button" className="icon-btn manage-labels" onClick={onManage}
+          title="Настроить метки" aria-label="Настроить метки">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9.5 3h5l.6 2.5 2 .9 2.3-.8 2.5 4.3-1.8 1.7v2.3l1.8 1.7-2.5 4.3-2.3-.8-2 .9-.6 2.5h-5l-.6-2.5-2-.9-2.3.8-2.5-4.3 1.8-1.7v-2.3L1.7 9.9l2.5-4.3 2.3.8 2-.9L9.5 3Z" />
+            <circle cx="12" cy="12.75" r="3" />
+          </svg>
+        </button>
+      </span>
       {labels.length === 0 && <span className="muted">пока нет — их можно создать в задаче или здесь</span>}
       {labels.map((label) => (
         <button
@@ -46,9 +56,6 @@ export default function LabelFilter({ labels, counts, selected, onToggle, onClea
           Сбросить
         </button>
       )}
-      <button className="link-btn manage-labels" onClick={onManage}>
-        Управлять метками
-      </button>
     </div>
   );
 }
