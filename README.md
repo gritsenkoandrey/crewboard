@@ -56,3 +56,13 @@ npm run tauri build
 | `src/components/Board.tsx` | Канбан-доска |
 | `src/components/Docs.tsx` | Документация: редактор, превью, автосохранение |
 | `src/saveTracker.ts` | Дописывает сохранения перед закрытием окна |
+
+
+## Работа с агентами
+
+Исполнители, путь к исходникам, безопасный CLI для Codex/Claude и отчёты о работе: [инструкция](docs/agent-workflow.md).
+
+```powershell
+npm run agent:build
+npm run agent -- --help
+```

@@ -6,11 +6,22 @@ export interface Project {
   createdAt: number;
   /** Полный путь к файлу обложки. */
   coverPath: string | null;
+  sourceDir?: string | null;
   /** Полный путь к папке проекта. */
   dir: string;
 }
 
+export interface Participant { id: string; name: string; kind: "human" | "agent" }
+export interface AgentClaim { assigneeId: string; sessionId: string; startedAt: number; token: string }
+export interface TaskReport { authorId: string; sessionId: string; createdAt: number; text: string }
+
 export interface Task {
+  assigneeId?: string;
+  acceptanceCriteria?: string;
+  claim?: AgentClaim;
+  readyForReview?: boolean;
+  question?: string;
+  reports?: TaskReport[];
   /** Архивная задача остаётся в исходной колонке. */
   archived?: boolean;
   number?: number;

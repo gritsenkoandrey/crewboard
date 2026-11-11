@@ -1,7 +1,7 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { Project } from "../types";
-import { documentRevisions, linkDocument, unlinkDocument, pickMarkdown, listDocuments, createDocument, renameDocument, reorderDocuments, deleteDocument, type ProjectDocument } from "../api";
+import { getSourceDir, setSourceDir, pickFolder, documentRevisions, linkDocument, unlinkDocument, pickMarkdown, listDocuments, createDocument, renameDocument, reorderDocuments, deleteDocument, type ProjectDocument } from "../api";
 import Board from "./Board";
 import Docs, { type DocsHandle } from "./Docs";
 import InlineInput from "./InlineInput";
@@ -17,6 +17,8 @@ interface Props {
   onRemoveCover: () => Promise<void>;
 }
 export default function ProjectPage({ project, onBack, onRename, onChangeCover, onRemoveCover }: Props) {
+  const [sourceDir, setSourceDirState] = useState<string | null>(project.sourceDir ?? null);
+  useEffect(() => { void getSourceDir(project.id).then(setSourceDirState).catch(() => undefined); }, [project.id]);
   const [tab, setTab] = useState("board");
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -160,6 +162,13 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
               {project.name}
             </h1>
           )}
+          <div className="project-source">
+            <span className="muted small" title={sourceDir ?? "Папка кода для агента"}>{sourceDir ? "Исходники: " + sourceDir : "Исходники не выбраны"}</span>
+            <button className="link-btn" disabled={busy} onClick={() => void run(async () => {
+              const path = await pickFolder(sourceDir ?? undefined);
+              if (path) setSourceDirState(await setSourceDir(project.id, path));
+            })}>{sourceDir ? "Изменить" : "Выбрать папку"}</button>
+          </div>
           <div className="document-tabs-row">
             <nav className="tabs document-tabs" aria-label="Разделы проекта">
               <button className={tab === "board" ? "active" : ""} onClick={() => selectTab("board")} disabled={busy}>Доска</button>

@@ -1,5 +1,6 @@
 [package]
 name = "task-track"
+default-run = "task-track"
 version = "0.1.0"
 description = "Simple local task tracker"
 authors = []

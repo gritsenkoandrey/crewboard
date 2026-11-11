@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Board, Project } from "./types";
+import type { Board, Project, Participant } from "./types";
 
 export interface DataDirInfo {
   /** Путь из настроек, если папка уже выбиралась. */
@@ -38,8 +38,8 @@ export function getBoard(id: string): Promise<Board> {
   return invoke("get_board", { id });
 }
 
-export function saveBoard(id: string, board: Board): Promise<void> {
-  return invoke("save_board", { id, board });
+export function saveBoard(id: string, board: Board, base: Board): Promise<Board> {
+  return invoke("save_board", { id, board, base });
 }
 
 export interface ProjectDocument { id: string; name: string; file: string; externalPath?: string }
@@ -85,3 +85,9 @@ export async function pickMarkdown(): Promise<string | null> {
   const file = await open({ multiple: false, title: "Подключить Markdown-файл", filters: [{ name: "Markdown", extensions: ["md"] }] });
   return typeof file === "string" ? file : null;
 }
+
+export function getParticipants(): Promise<Participant[]> { return invoke("get_participants"); }
+export function createParticipant(name: string, kind: string): Promise<Participant[]> { return invoke("create_participant", { name, kind }); }
+export function getSourceDir(id: string): Promise<string | null> { return invoke("get_source_dir", { id }); }
+export function setSourceDir(id: string, path: string | null): Promise<string | null> { return invoke("set_source_dir", { id, path }); }
+export function releaseTask(id: string, taskId: string): Promise<Board> { return invoke("release_task", { id, taskId }); }

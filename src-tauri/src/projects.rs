@@ -33,6 +33,8 @@ struct ProjectMeta {
     /// Имя файла обложки внутри папки проекта.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     cover: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source_dir: Option<String>,
 }
 
 /// Проект для интерфейса.
@@ -44,6 +46,7 @@ pub struct Project {
     created_at: u64,
     /// Полный путь к обложке, если она есть и файл на месте.
     cover_path: Option<String>,
+    source_dir: Option<String>,
     /// Полный путь к папке проекта: относительно неё открываются картинки из markdown.
     dir: String,
 }
@@ -134,6 +137,7 @@ fn to_project(dir: &Path, meta: ProjectMeta) -> Project {
         name: meta.name,
         created_at: meta.created_at,
         cover_path,
+        source_dir: meta.source_dir,
         dir: dir.to_string_lossy().into_owned(),
     }
 }
@@ -144,7 +148,7 @@ fn load_project(dir: &Path) -> Project {
     let meta = read_meta(dir).unwrap_or_else(|| ProjectMeta {
         name: dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
         created_at: 0,
-        cover: None,
+        cover: None, source_dir: None,
     });
     to_project(dir, meta)
 }
@@ -173,7 +177,7 @@ pub fn create_project(app: AppHandle, name: String) -> CmdResult<Project> {
     let dir = unique_dir(&root, &slugify(&name));
     fs::create_dir(&dir).map_err(|e| format!("Не удалось создать папку проекта: {e}"))?;
 
-    let meta = ProjectMeta { name: name.clone(), created_at: now_ms(), cover: None };
+    let meta = ProjectMeta { name: name.clone(), created_at: now_ms(), cover: None, source_dir: None };
     write_meta(&dir, &meta)?;
     let board_text = serde_json::to_string_pretty(&crate::board::new_board()).map_err(|e| e.to_string())?;
     write_atomic(&dir.join(BOARD_FILE), &(board_text + "\n"))?;
@@ -184,7 +188,8 @@ pub fn create_project(app: AppHandle, name: String) -> CmdResult<Project> {
 pub fn rename_project(app: AppHandle, id: String, name: String) -> CmdResult<Project> {
     let name = validate_name(&name)?;
     let dir = project_dir(&app, &id)?;
-    let mut meta = read_meta(&dir).unwrap_or(ProjectMeta { name: String::new(), created_at: now_ms(), cover: None });
+    let _lock = crate::storage::lock(&dir, "project.lock")?;
+    let mut meta = read_meta(&dir).unwrap_or(ProjectMeta { name: String::new(), created_at: now_ms(), cover: None, source_dir: None });
     meta.name = name;
     write_meta(&dir, &meta)?;
     Ok(to_project(&dir, meta))
@@ -209,6 +214,7 @@ fn remove_cover_file(dir: &Path, meta: &ProjectMeta) {
 #[tauri::command]
 pub fn set_cover(app: AppHandle, id: String, source: String) -> CmdResult<Project> {
     let dir = project_dir(&app, &id)?;
+    let _lock = crate::storage::lock(&dir, "project.lock")?;
     let source = PathBuf::from(source);
     let ext = source
         .extension()
@@ -226,7 +232,7 @@ pub fn set_cover(app: AppHandle, id: String, source: String) -> CmdResult<Projec
     let mut meta = read_meta(&dir).unwrap_or_else(|| ProjectMeta {
         name: id.clone(),
         created_at: now_ms(),
-        cover: None,
+        cover: None, source_dir: None,
     });
     remove_cover_file(&dir, &meta);
     meta.cover = Some(file_name);
@@ -237,6 +243,7 @@ pub fn set_cover(app: AppHandle, id: String, source: String) -> CmdResult<Projec
 #[tauri::command]
 pub fn remove_cover(app: AppHandle, id: String) -> CmdResult<Project> {
     let dir = project_dir(&app, &id)?;
+    let _lock = crate::storage::lock(&dir, "project.lock")?;
     let Some(mut meta) = read_meta(&dir) else {
         return Ok(load_project(&dir));
     };
@@ -250,6 +257,7 @@ pub fn remove_cover(app: AppHandle, id: String) -> CmdResult<Project> {
 #[tauri::command]
 pub fn delete_project(app: AppHandle, id: String) -> CmdResult<()> {
     let dir = project_dir(&app, &id)?;
+    let _lock = crate::storage::lock(&dir, "project.lock")?;
     trash::delete(&dir).map_err(|e| format!("Не удалось переместить проект в корзину: {e}"))
 }
 

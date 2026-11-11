@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use tauri::AppHandle;
+use std::path::Path;
 
 /// Должно совпадать с TASK_TITLE_MAX в src/components/Board.tsx.
 const MAX_TITLE_CHARS: usize = 2000;
@@ -34,6 +35,9 @@ pub struct Task {
     /// id меток проекта.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     labels: Vec<String>,
+    /// Extension fields (assignment, sessions, reports) survive edits from older views.
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Метка проекта. Цвет — ключ из палитры интерфейса (`red`, `blue`…), а не произвольный hex.
@@ -44,7 +48,7 @@ pub struct Label {
     color: String,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Board {
     #[serde(default)]
@@ -82,7 +86,7 @@ impl Board {
 }
 
 /// Проверяет доску перед записью и убирает с задач ссылки на несуществующие метки.
-fn validate(mut board: Board) -> CmdResult<Board> {
+pub(crate) fn validate(mut board: Board) -> CmdResult<Board> {
     let mut label_ids = HashSet::new();
     for label in &board.labels {
         let name = label.name.trim();
@@ -108,6 +112,9 @@ fn validate(mut board: Board) -> CmdResult<Board> {
         if task.description.chars().count() > MAX_DESCRIPTION_CHARS {
             return Err(format!("Описание задачи длиннее {MAX_DESCRIPTION_CHARS} символов"));
         }
+        if task.extra.get("acceptanceCriteria").and_then(serde_json::Value::as_str).is_some_and(|v| v.chars().count() > MAX_DESCRIPTION_CHARS) {
+            return Err("Условия готовности длиннее 200000 символов".into());
+        }
         if !task_ids.insert(task.id.clone()) {
             return Err(format!("Повторяющийся id задачи: {}", task.id));
         }
@@ -122,7 +129,7 @@ fn validate(mut board: Board) -> CmdResult<Board> {
 }
 
 /// Assign missing numbers once, preserving the high-water mark after deletions.
-fn initialize_metadata(board: &mut Board, name: &str) {
+pub(crate) fn initialize_metadata(board: &mut Board, name: &str) {
     if board.task_prefix.is_empty() {
         let words: Vec<&str> = name.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
         board.task_prefix = if words.len() > 1 {
@@ -143,33 +150,38 @@ fn initialize_metadata(board: &mut Board, name: &str) {
     board.next_task_number = next;
 }
 
-#[tauri::command]
-pub fn get_board(app: AppHandle, id: String) -> CmdResult<Board> {
-    let dir = project_dir(&app, &id)?;
+pub(crate) fn load(dir: &Path) -> CmdResult<Board> {
     let path = dir.join(BOARD_FILE);
     let mut board: Board = match fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text)
-            .map_err(|e| format!("Файл доски повреждён ({}): {e}", path.display()))?,
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("Файл доски повреждён: {e}"))?,
         Err(e) if e.kind() == ErrorKind::NotFound => new_board(),
         Err(e) => return Err(format!("Не удалось прочитать доску: {e}")),
     };
     let original = serde_json::to_string(&board).map_err(|e| e.to_string())?;
     let meta: serde_json::Value = fs::read_to_string(dir.join("project.json")).ok()
-        .and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
-    initialize_metadata(&mut board, meta["name"].as_str().unwrap_or(&id));
-    if serde_json::to_string(&board).map_err(|e| e.to_string())? != original {
-        let text = serde_json::to_string_pretty(&board).map_err(|e| e.to_string())?;
-        write_atomic(&path, &(text + "\n"))?;
-    }
+        .and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    initialize_metadata(&mut board, meta["name"].as_str().unwrap_or("Project"));
+    if serde_json::to_string(&board).map_err(|e| e.to_string())? != original { store(dir, &board)?; }
     Ok(board)
 }
-
+pub(crate) fn store(dir: &Path, board: &Board) -> CmdResult<()> {
+    let text = serde_json::to_string_pretty(board).map_err(|e| e.to_string())?;
+    write_atomic(&dir.join(BOARD_FILE), &(text + "\n"))
+}
 #[tauri::command]
-pub fn save_board(app: AppHandle, id: String, board: Board) -> CmdResult<()> {
-    let board = validate(board)?;
-    let path = project_dir(&app, &id)?.join(BOARD_FILE);
-    let text = serde_json::to_string_pretty(&board).map_err(|e| e.to_string())?;
-    write_atomic(&path, &(text + "\n"))
+pub fn get_board(app: AppHandle, id: String) -> CmdResult<Board> {
+    let dir = project_dir(&app, &id)?;
+    let _lock = crate::storage::lock(&dir, "board.lock")?;
+    load(&dir)
+}
+#[tauri::command]
+pub fn save_board(app: AppHandle, id: String, board: Board, base: Board) -> CmdResult<Board> {
+    let dir = project_dir(&app, &id)?;
+    let _lock = crate::storage::lock(&dir, "board.lock")?;
+    let remote = load(&dir)?;
+    let merged = crate::board_merge::merge(&base, &board, &remote)?;
+    store(&dir, &merged)?;
+    Ok(merged)
 }
 
 #[cfg(test)]

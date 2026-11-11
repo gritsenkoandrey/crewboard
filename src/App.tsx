@@ -1,3 +1,4 @@
+import AgentSettings from "./components/AgentSettings";
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { flushAll } from "./saveTracker";
@@ -19,6 +20,7 @@ import ProjectPage from "./components/ProjectPage";
 import type { Project } from "./types";
 
 export default function App() {
+  const [agentSettings, setAgentSettings] = useState(false);
   const [info, setInfo] = useState<DataDirInfo | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -114,6 +116,7 @@ export default function App() {
         <div className="data-dir muted" title={info.path ?? ""}>
           {info.path}
         </div>
+        <button className="btn" onClick={() => setAgentSettings(true)}>Исполнители</button>
         <button className="btn" onClick={chooseFolder}>
           Сменить папку
         </button>
@@ -126,6 +129,7 @@ export default function App() {
           </button>
         </div>
       )}
+      {agentSettings && <AgentSettings onClose={() => setAgentSettings(false)} />}
       <main className="content">
         {openProject ? (
           <ProjectPage

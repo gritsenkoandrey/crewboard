@@ -1,3 +1,7 @@
+mod storage;
+mod board_merge;
+mod agents;
+pub mod agent_cli;
 mod board;
 mod docs;
 mod projects;
@@ -113,6 +117,11 @@ pub fn run() {
         // Ссылки из документации открываются в системном браузере, а не внутри окна.
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            agents::get_participants,
+            agents::create_participant,
+            agents::get_source_dir,
+            agents::set_source_dir,
+            agents::release_task,
             get_data_dir,
             set_data_dir,
             projects::list_projects,

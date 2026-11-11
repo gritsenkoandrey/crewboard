@@ -23,14 +23,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { getBoard, saveBoard } from "../api";
+import { getBoard, saveBoard, getParticipants, releaseTask } from "../api";
 import { stampBoard, taskCode, setTaskArchived } from "../taskMetadata";
 import { trackSave } from "../saveTracker";
 import { LabelPill, nextLabelColor } from "../labels";
-import type { Board as BoardData, ColumnId, Label, Task } from "../types";
+import type { Board as BoardData, ColumnId, Label, Task, Participant } from "../types";
 import InlineInput from "./InlineInput";
 import LabelFilter, { NO_LABEL } from "./LabelFilter";
 import LabelManager from "./LabelManager";
+import ConfirmDialog from "./ConfirmDialog";
 import TaskArchive from "./TaskArchive";
 import TaskPanel, { type TaskPatch } from "./TaskPanel";
 
@@ -72,6 +73,12 @@ function findColumn(board: BoardData, id: string): ColumnId | null {
 
 export default function Board({ projectId, projectDir }: { projectId: string; projectDir: string }) {
   const [board, setBoard] = useState<BoardData | null>(null);
+  const [reloadConfirm, setReloadConfirm] = useState(false);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const pendingSaves = useRef(0);
+  const generation = useRef(0);
+  const saveFailed = useRef(false);
+  const failedBase = useRef<BoardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
@@ -117,15 +124,54 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     };
   }, [projectId]);
 
-  function persist(next: BoardData) {
-    saveQueue.current = trackSave(saveQueue.current.then(() => saveBoard(projectId, next))).catch((e) => setError(`Не удалось сохранить доску: ${e}`));
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const members = await getParticipants();
+        if (!cancelled) setParticipants(members);
+        if (pendingSaves.current === 0 && !dragStart.current && !saveFailed.current) {
+          const version = generation.current;
+          const fresh = await getBoard(projectId);
+          if (!cancelled && pendingSaves.current === 0 && generation.current === version && !dragStart.current && !saveFailed.current) {
+            boardRef.current = fresh; setBoard(fresh);
+          }
+        }
+      } catch { /* retry after a temporary storage error */ }
+      if (!cancelled) timer = setTimeout(poll, 2000);
+    }
+    void poll();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [projectId]);
+
+  function persist(next: BoardData, base: BoardData, version: number) {
+    pendingSaves.current += 1;
+    saveQueue.current = trackSave(saveQueue.current.then(async () => {
+      const mergeBase = failedBase.current ?? base;
+      try {
+        const saved = await saveBoard(projectId, next, mergeBase);
+        failedBase.current = null;
+        saveFailed.current = false;
+        setError(null);
+        if (generation.current === version && !dragStart.current) {
+          boardRef.current = saved; setBoard(saved);
+        }
+      } catch (e) {
+        saveFailed.current = true;
+        failedBase.current = mergeBase;
+        setError(String(e));
+      } finally { pendingSaves.current -= 1; }
+    }));
   }
 
   function update(next: BoardData, previous = boardRef.current) {
-    if (previous) next = stampBoard(previous, next);
+    if (!previous) return;
+    next = stampBoard(previous, next);
+    generation.current += 1;
     boardRef.current = next;
     setBoard(next);
-    persist(next);
+    persist(next, previous, generation.current);
   }
 
   /** Применяет изменение к самой свежей версии доски и сохраняет. */
@@ -312,7 +358,13 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
       {error && (
         <div className="error-bar board-error">
           <span>{error}</span>
-          <button className="icon-btn" title="Закрыть" onClick={() => setError(null)}>
+          {saveFailed.current && <div className="board-conflict-actions">
+            <button className="btn small-btn" disabled={pendingSaves.current > 0} onClick={() => {
+              if (boardRef.current && failedBase.current) persist(boardRef.current, failedBase.current, generation.current);
+            }}>Повторить сохранение</button>
+            <button className="btn small-btn" onClick={() => setReloadConfirm(true)}>Загрузить актуальную доску</button>
+          </div>}
+          <button className="icon-btn" title="Закрыть" onClick={() => { if (!saveFailed.current) setError(null); }}>
                 <Icon name="close" />
               </button>
         </div>
@@ -353,6 +405,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
               tasks={current[column.id].filter(isVisible)}
               total={current[column.id].filter((t) => !t.archived).length}
               labels={labels}
+              participants={participants}
               onAdd={(title) => addTask(column.id, title)}
               onOpen={setOpenTaskId}
               onDelete={deleteTask}
@@ -372,6 +425,18 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
           projectDir={projectDir}
           titleMaxLength={TASK_TITLE_MAX}
           labels={labels}
+          participants={participants}
+          onRelease={async () => {
+            await saveQueue.current;
+            if (saveFailed.current) throw new Error("Сначала разрешите ошибку сохранения доски");
+            pendingSaves.current += 1;
+            generation.current += 1;
+            try {
+              const fresh = await releaseTask(projectId, openTask.id);
+              generation.current += 1;
+              boardRef.current = fresh; setBoard(fresh);
+            } finally { pendingSaves.current -= 1; }
+          }}
           onChange={(patch) => updateTask(openTask.id, patch)}
           onSetLabels={(ids) => updateTask(openTask.id, { labels: ids })}
           onCreateLabel={(name) => createLabel(name, openTask.id)}
@@ -383,6 +448,17 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
         />
       )}
 
+      {reloadConfirm && <ConfirmDialog title="Загрузить актуальную доску?" confirmLabel="Загрузить" danger
+        onCancel={() => setReloadConfirm(false)} onConfirm={() => {
+          setReloadConfirm(false);
+          if (openTaskId) { setError("Сначала закройте открытую задачу и скопируйте нужные правки"); return; }
+          const version = ++generation.current;
+          void saveQueue.current.then(() => getBoard(projectId)).then((fresh) => {
+            if (generation.current !== version) return;
+            failedBase.current = null; saveFailed.current = false; generation.current += 1;
+            boardRef.current = fresh; setBoard(fresh); setError(null);
+          }, (e) => setError(String(e)));
+        }}><p>Несохранённые изменения в этом окне будут заменены данными с диска. Сначала скопируйте нужные правки.</p></ConfirmDialog>}
       {archiveOpen && (
         <TaskArchive tasks={archivedTasks} prefix={current.taskPrefix} labels={labels}
           onRestore={restoreTask}
@@ -441,12 +517,13 @@ interface ColumnProps {
   /** Всего задач в колонке. */
   total: number;
   labels: Label[];
+  participants: Participant[];
   onAdd: (title: string) => void;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
-function Column({ id, title, taskPrefix, tasks, total, labels, onAdd, onOpen, onDelete }: ColumnProps) {
+function Column({ id, title, taskPrefix, tasks, total, labels, participants, onAdd, onOpen, onDelete }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [adding, setAdding] = useState(false);
   // Новый key пересоздаёт поле ввода после Enter, чтобы сразу вводить следующую задачу.
@@ -474,6 +551,7 @@ function Column({ id, title, taskPrefix, tasks, total, labels, onAdd, onOpen, on
               task={task}
               code={taskCode(taskPrefix, task.number)}
               labels={labels}
+              participants={participants}
               onOpen={() => onOpen(task.id)}
               onDelete={() => onDelete(task.id)}
             />
@@ -506,6 +584,7 @@ function Column({ id, title, taskPrefix, tasks, total, labels, onAdd, onOpen, on
 }
 
 interface TaskCardProps {
+  participants: Participant[];
   code: string;
   task: Task;
   labels: Label[];
@@ -513,7 +592,7 @@ interface TaskCardProps {
   onDelete: () => void;
 }
 
-function TaskCard({ task, code, labels, onOpen, onDelete }: TaskCardProps) {
+function TaskCard({ task, code, labels, participants, onOpen, onDelete }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
   const style = { transform: CSS.Translate.toString(transform), transition };
@@ -533,6 +612,11 @@ function TaskCard({ task, code, labels, onOpen, onDelete }: TaskCardProps) {
     >
       <div className="task-body">
         <span className="task-code">{code}</span>
+        {(task.assigneeId || task.readyForReview || task.question) && <div className="task-agent-badges">
+          {task.assigneeId && <span>{participants.find((p) => p.id === task.assigneeId)?.name ?? task.assigneeId}</span>}
+          {task.readyForReview && <span className="review-badge">Готово к проверке</span>}
+          {task.question && <span className="question-badge">Нужен ответ</span>}
+        </div>}
         <span className="task-title">
           {task.title}
           {hasDescription && (
@@ -551,7 +635,8 @@ function TaskCard({ task, code, labels, onOpen, onDelete }: TaskCardProps) {
       </div>
       <button
         className="icon-btn task-delete"
-        title="Удалить задачу"
+        disabled={!!task.claim}
+        title={task.claim ? "Сначала освободите задачу" : "Удалить задачу"}
         // Нажатия на кнопке не должны начинать перетаскивание или открывать задачу.
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}

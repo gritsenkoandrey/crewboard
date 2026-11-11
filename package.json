@@ -8,7 +8,9 @@
     "build": "npm run icons && tsc && vite build",
     "icons": "tauri icon app-icon.png",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "agent": "node scripts/tasktrack.mjs",
+    "agent:build": "cargo build --manifest-path src-tauri/Cargo.toml --bin tasktrack"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
