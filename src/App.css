@@ -868,12 +868,12 @@ body {
   color: var(--count-color, var(--muted));
 }
 
-/* Not started — нейтральная колонка. */
+/* Not started — красная колонка. */
 .column-todo {
-  --col-color: #9b9a97;
+  --col-color: #e45b5b;
 }
 
-/* In progress и Done окрашены целиком: фон колонки, карточки и плашка.
+/* Колонки окрашены целиком: фон колонки, карточки и плашка.
    Оттенки смешиваются с фоном темы, поэтому работают и в светлой, и в тёмной. */
 .column-inProgress {
   --col-color: #e9a93a;
@@ -883,6 +883,7 @@ body {
   --col-color: #48b878;
 }
 
+.column-todo,
 .column-inProgress,
 .column-done {
   --col-bg: color-mix(in srgb, var(--col-color) 11%, var(--bg));
