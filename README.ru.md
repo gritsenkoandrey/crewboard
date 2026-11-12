@@ -174,3 +174,7 @@ $tt = Join-Path (Get-Location).Path "src-tauri/target/debug/crewboard-cli.exe"
 | `src/taskMetadata.ts`, `src/saveTracker.ts` | Даты и архивирование задач, ожидание сохранений |
 | `src/i18n.ts`, `src/locales.ts`, `src/components/LanguageSwitcher.tsx` | Выбор языка, словарь и кнопки RU/EN |
 | `docs/agent-workflow.ru.md` | Инструкция для пользователя и локального агента |
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).

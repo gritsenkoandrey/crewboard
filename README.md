@@ -171,3 +171,7 @@ See the [agent workflow guide](docs/agent-workflow.md) for commands, stdin repor
 | `src/i18n.ts`, `src/locales.ts`, `src/components/LanguageSwitcher.tsx` | Language preference, translations, RU/EN controls |
 | `src/taskMetadata.ts`, `src/saveTracker.ts` | Task dates, archiving, and save tracking |
 | `docs/agent-workflow.md` | User and local-agent instructions |
+
+## License
+
+MIT — see [LICENSE](LICENSE).
