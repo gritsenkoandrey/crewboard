@@ -1,13 +1,13 @@
 /**
- * Учёт незавершённых сохранений, чтобы при закрытии окна ничего не потерять.
- * Компоненты регистрируют свои сохранения и «досохранялки» (сбросить отложенное автосохранение),
- * а App перед закрытием окна вызывает flushAll().
+ * Track unfinished saves to avoid losing changes when the window closes.
+ * Components register save operations and flushers that trigger pending autosaves,
+ * and App calls flushAll() before closing the window.
  */
 
 const pending = new Set<Promise<unknown>>();
 const flushers = new Set<() => void>();
 
-/** Запоминает сохранение до его завершения. */
+/** Tracks a save operation until it finishes. */
 export function trackSave<T>(promise: Promise<T>): Promise<T> {
   pending.add(promise);
   const forget = () => pending.delete(promise);
@@ -15,13 +15,13 @@ export function trackSave<T>(promise: Promise<T>): Promise<T> {
   return promise;
 }
 
-/** Регистрирует функцию, которая сразу запускает отложенное сохранение. Возвращает отписку. */
+/** Registers a function that triggers pending saves immediately. Returns an unregister callback. */
 export function registerFlusher(flush: () => void): () => void {
   flushers.add(flush);
   return () => flushers.delete(flush);
 }
 
-/** Запускает все отложенные сохранения и ждёт завершения всех текущих. */
+/** Flushes all pending saves and waits for all in-flight saves to finish. */
 export async function flushAll(): Promise<void> {
   flushers.forEach((flush) => flush());
   await Promise.allSettled([...pending]);

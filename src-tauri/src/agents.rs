@@ -14,7 +14,7 @@ pub(crate) fn unique() -> String { format!("{:x}-{:x}", SystemTime::now().durati
 pub(crate) fn participants(root: &Path) -> CmdResult<Vec<Participant>> {
     let _lock=storage::lock(root,"participants.lock")?;
     match fs::read_to_string(root.join("participants.json")) {
-        Ok(text)=>serde_json::from_str(&text).map_err(|e|format!("Повреждён список исполнителей: {e}")),
+        Ok(text)=>serde_json::from_str(&text).map_err(|e|format!("Participant list is corrupt: {e}")),
         Err(e) if e.kind()==std::io::ErrorKind::NotFound=> {
             let list=vec![Participant{id:"you".into(),name:"Я".into(),kind:"human".into()},Participant{id:"codex".into(),name:"Codex".into(),kind:"agent".into()},Participant{id:"claude".into(),name:"Claude".into(),kind:"agent".into()}];
             write_atomic(&root.join("participants.json"),&serde_json::to_string_pretty(&list).map_err(|e|e.to_string())?)?; Ok(list)
@@ -25,18 +25,18 @@ pub(crate) fn add_participant(root: &Path,name:&str,kind:&str)->CmdResult<Vec<Pa
     let _=participants(root)?;
     let _lock=storage::lock(root,"participants.lock")?;
     let name=name.trim();
-    if name.is_empty() || name.chars().count()>60 || !["human","agent"].contains(&kind) {return Err("Укажите имя до 60 символов и тип human или agent".into());}
+    if name.is_empty() || name.chars().count()>60 || !["human","agent"].contains(&kind) {return Err("Provide a name up to 60 characters and a type of human or agent".into());}
     let mut list:Vec<Participant>=serde_json::from_str(&fs::read_to_string(root.join("participants.json")).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
-    if list.iter().any(|p|p.name.to_lowercase()==name.to_lowercase()){return Err("Исполнитель с таким именем уже есть".into());}
+    if list.iter().any(|p|p.name.to_lowercase()==name.to_lowercase()){return Err("A participant with this name already exists".into());}
     list.push(Participant{id:format!("member-{}",unique()),name:name.into(),kind:kind.into()});
     write_atomic(&root.join("participants.json"),&serde_json::to_string_pretty(&list).map_err(|e|e.to_string())?)?; Ok(list)
 }
 pub(crate) fn project_dir(root:&Path,id:&str)->CmdResult<PathBuf>{
-    if id.is_empty() || id=="." || id==".." || id.contains(['/', '\\', ':']) {return Err("Некорректный проект".into());}
+    if id.is_empty() || id=="." || id==".." || id.contains(['/', '\\', ':']) {return Err("Invalid project".into());}
     let dir=root.join("projects").join(id);
-    if !dir.is_dir(){return Err(format!("Проект не найден: {id}"));}
+    if !dir.is_dir(){return Err(format!("Project not found: {id}"));}
     let real=fs::canonicalize(&dir).map_err(|e|e.to_string())?;
-    if real.parent()!=Some(fs::canonicalize(root.join("projects")).map_err(|e|e.to_string())?.as_path()){return Err("Папка проекта находится вне данных".into());}
+    if real.parent()!=Some(fs::canonicalize(root.join("projects")).map_err(|e|e.to_string())?.as_path()){return Err("Project folder is outside the data folder".into());}
     Ok(dir)
 }
 pub(crate) fn source(dir:&Path)->CmdResult<Option<String>> {
@@ -44,13 +44,13 @@ pub(crate) fn source(dir:&Path)->CmdResult<Option<String>> {
     Ok(meta["sourceDir"].as_str().map(str::to_owned))
 }
 pub(crate) fn set_source(dir:&Path,path:Option<String>)->CmdResult<Option<String>> {
-    if let Some(ref path)=path {if !Path::new(path).is_absolute() || !Path::new(path).is_dir(){return Err("Папка исходников не найдена".into());}}
+    if let Some(ref path)=path {if !Path::new(path).is_absolute() || !Path::new(path).is_dir(){return Err("Source folder not found".into());}}
     let _lock=storage::lock(dir,"project.lock")?;
     let mut meta:Value=serde_json::from_str(&fs::read_to_string(dir.join("project.json")).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
     meta["sourceDir"]=json!(path);
     write_atomic(&dir.join("project.json"),&serde_json::to_string_pretty(&meta).map_err(|e|e.to_string())?)?; Ok(path)
 }
-pub(crate) fn participant(root:&Path,id:&str)->CmdResult<Participant>{ participants(root)?.into_iter().find(|p|p.id==id).ok_or_else(||format!("Исполнитель не найден: {id}")) }
+pub(crate) fn participant(root:&Path,id:&str)->CmdResult<Participant>{ participants(root)?.into_iter().find(|p|p.id==id).ok_or_else(||format!("Participant not found: {id}")) }
 #[tauri::command]
 pub fn get_participants(app:AppHandle)->CmdResult<Vec<Participant>>{participants(&crate::data_dir(&app)?)}
 #[tauri::command]
@@ -72,7 +72,7 @@ pub fn release_task(app:AppHandle,id:String,task_id:String)->CmdResult<board::Bo
                 return Ok(());
             }
         }
-        Err("Задача не найдена".into())
+        Err("Task not found".into())
     })
 }
 pub(crate) fn transact(dir:&Path,action:impl FnOnce(&mut Value)->CmdResult<()>)->CmdResult<board::Board>{

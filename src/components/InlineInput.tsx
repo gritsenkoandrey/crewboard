@@ -12,20 +12,20 @@ interface Props {
   initial?: string;
   placeholder?: string;
   className?: string;
-  /** Максимум символов. Ближе к пределу под полем появляется счётчик. */
+  /** Character limit. Show a counter below the input when approaching the limit. */
   maxLength?: number;
-  /** Многострочное поле, которое растёт по высоте вместе с текстом (Enter всё равно сохраняет). */
+  /** Multiline input that grows with its content (Enter still submits). */
   multiline?: boolean;
-  /** Enter или потеря фокуса. Пустое или неизменённое значение считается отменой. */
+  /** Submit on Enter or blur. Empty or unchanged values cancel the edit. */
   onCommit: (value: string, via: "enter" | "blur") => void;
   /** Escape. */
   onCancel: () => void;
 }
 
-/** Показываем счётчик, когда набрано больше этой доли от лимита. */
+/** Show the counter when the input exceeds this fraction of the limit. */
 const COUNTER_THRESHOLD = 0.8;
 
-/** Поле ввода для быстрого создания и переименования: сразу в фокусе, текст выделен. */
+/** Input for quick creation and renaming: focused immediately with its text selected. */
 export default function InlineInput({
   initial = "",
   placeholder,
@@ -37,7 +37,7 @@ export default function InlineInput({
 }: Props) {
   const [value, setValue] = useState(initial);
   const ref = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
-  // Enter и последующий blur не должны сработать дважды.
+  // Enter followed by blur must not submit twice.
   const done = useRef(false);
 
   useEffect(() => {
@@ -45,7 +45,7 @@ export default function InlineInput({
     ref.current?.select();
   }, []);
 
-  // Высота многострочного поля подстраивается под текст.
+  // Resize the multiline input to fit its text.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!multiline || !el) return;
@@ -69,7 +69,7 @@ export default function InlineInput({
     maxLength,
     onChange: (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setValue(e.target.value),
     onKeyDown: (e: KeyboardEvent) => {
-      // Во время набора через IME Enter подтверждает символ, а не поле.
+      // During IME composition, Enter confirms a character rather than submitting the input.
       if (e.nativeEvent.isComposing) return;
       if (e.key === "Enter") {
         e.preventDefault();

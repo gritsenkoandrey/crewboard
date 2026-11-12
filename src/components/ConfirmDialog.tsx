@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import { useEffect, type ReactNode } from "react";
 
 interface Props {
@@ -10,7 +11,8 @@ interface Props {
 }
 
 export default function ConfirmDialog({ title, children, confirmLabel, danger, onConfirm, onCancel }: Props) {
-  // Enter обрабатывает кнопка подтверждения — она в фокусе (autoFocus).
+  const { t } = useI18n();
+  // The focused confirmation button handles Enter (autoFocus).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onCancel();
@@ -26,8 +28,7 @@ export default function ConfirmDialog({ title, children, confirmLabel, danger, o
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
           <button className="btn" onClick={onCancel}>
-            Отмена
-          </button>
+            {t("Cancel")}</button>
           <button className={`btn ${danger ? "danger" : "primary"}`} onClick={onConfirm} autoFocus>
             {confirmLabel}
           </button>

@@ -9,11 +9,11 @@ import { tags as t } from "@lezer/highlight";
 interface Props {
   initialText: string;
   onChange: (text: string) => void;
-  /** Ctrl+S — сохранить сразу, не дожидаясь автосохранения. */
+  /** Ctrl+S saves immediately without waiting for autosave. */
   onSave: () => void;
 }
 
-// Цвета из CSS-переменных, поэтому редактор следует светлой/тёмной теме приложения.
+// CSS variables keep editor colors in sync with the application's light or dark theme.
 const theme = EditorView.theme({
   "&": { height: "100%", fontSize: "15px", color: "var(--text)", backgroundColor: "var(--bg)" },
   "&.cm-focused": { outline: "none" },
@@ -35,11 +35,11 @@ const highlightStyle = HighlightStyle.define([
   { tag: [t.link, t.url], color: "var(--accent)" },
   { tag: t.monospace, fontFamily: "var(--font-mono)", fontSize: "0.9em" },
   { tag: t.quote, color: "var(--muted)" },
-  // Служебные символы разметки: #, *, `, >, -.
+  // Markdown syntax characters: #, *, `, >, -.
   { tag: [t.processingInstruction, t.contentSeparator, t.meta], color: "var(--muted)" },
 ]);
 
-/** Редактор markdown на CodeMirror. Создаётся один раз; новый документ — новый key у компонента. */
+/** CodeMirror Markdown editor. Created once; a new document requires a new component key. */
 export default function MarkdownEditor({ initialText, onChange, onSave }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const callbacks = useRef({ onChange, onSave });

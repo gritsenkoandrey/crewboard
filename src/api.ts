@@ -1,11 +1,12 @@
+import { translate as t } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { Board, Project, Participant } from "./types";
 
 export interface DataDirInfo {
-  /** Путь из настроек, если папка уже выбиралась. */
+  /** Path from settings, if a folder was previously selected. */
   path: string | null;
-  /** Папка выбрана, но сейчас недоступна. */
+  /** A folder was selected but is currently unavailable. */
   missing: boolean;
 }
 
@@ -29,7 +30,7 @@ export function renameProject(id: string, name: string): Promise<Project> {
   return invoke("rename_project", { id, name });
 }
 
-/** Перемещает папку проекта в корзину Windows. */
+/** Moves the project folder to the Windows Recycle Bin. */
 export function deleteProject(id: string): Promise<void> {
   return invoke("delete_project", { id });
 }
@@ -52,7 +53,7 @@ export function getDocument(id: string, documentId: string): Promise<DocumentCon
 export function saveDocument(id: string, documentId: string, text: string, baseText: string): Promise<string> { return invoke("save_document", { id, documentId, text, baseText }); }
 export function deleteDocument(id: string, documentId: string): Promise<ProjectDocument[]> { return invoke("delete_document", { id, documentId }); }
 
-/** Копирует картинку в папку проекта и делает её обложкой. */
+/** Copies an image into the project folder and sets it as the cover. */
 export function setCover(id: string, source: string): Promise<Project> {
   return invoke("set_cover", { id, source });
 }
@@ -61,19 +62,19 @@ export function removeCover(id: string): Promise<Project> {
   return invoke("remove_cover", { id });
 }
 
-/** Диалог выбора картинки для обложки. Возвращает null, если пользователь его закрыл. */
+/** Opens the cover image picker. Returns null if the user cancels. */
 export async function pickImage(): Promise<string | null> {
   const result = await open({
     multiple: false,
-    title: "Обложка проекта",
-    filters: [{ name: "Картинки", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"] }],
+    title: t("Project cover"),
+    filters: [{ name: t("Images"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"] }],
   });
   return typeof result === "string" ? result : null;
 }
 
-/** Системный диалог выбора папки. Возвращает null, если пользователь его закрыл. */
+/** Opens the system folder picker. Returns null if the user cancels. */
 export async function pickFolder(defaultPath?: string): Promise<string | null> {
-  const result = await open({ directory: true, multiple: false, defaultPath, title: "Папка с данными Task Track" });
+  const result = await open({ directory: true, multiple: false, defaultPath, title: t("Crewboard data folder") });
   return typeof result === "string" ? result : null;
 }
 
@@ -82,7 +83,7 @@ export function documentRevisions(id: string): Promise<DocumentRevision[]> { ret
 export function linkDocument(id: string, source: string, documentId?: string): Promise<ProjectDocument[]> { return invoke("link_document", { id, source, documentId: documentId ?? null }); }
 export function unlinkDocument(id: string, documentId: string): Promise<ProjectDocument[]> { return invoke("unlink_document", { id, documentId }); }
 export async function pickMarkdown(): Promise<string | null> {
-  const file = await open({ multiple: false, title: "Подключить Markdown-файл", filters: [{ name: "Markdown", extensions: ["md"] }] });
+  const file = await open({ multiple: false, title: t("Connect Markdown file"), filters: [{ name: "Markdown", extensions: ["md"] }] });
   return typeof file === "string" ? file : null;
 }
 

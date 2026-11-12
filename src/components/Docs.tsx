@@ -1,3 +1,5 @@
+import { translate, useI18n } from "../i18n";
+import type { Message } from "../locales";
 import Icon from "./Icon";
 import { forwardRef, useImperativeHandle, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { getDocument, saveDocument } from "../api";
@@ -9,10 +11,10 @@ import MarkdownEditor from "./MarkdownEditor";
 type Mode = "view" | "split" | "edit";
 type SaveStatus = "saved" | "pending" | "saving" | "error";
 
-const MODES: { id: Mode; label: string }[] = [
-  { id: "view", label: "Просмотр" },
-  { id: "split", label: "Рядом" },
-  { id: "edit", label: "Редактор" },
+const MODES: { id: Mode; label: Message }[] = [
+  { id: "view", label: "View" },
+  { id: "split", label: "Side by side" },
+  { id: "edit", label: "Editor" },
 ];
 
 const MODE_KEY = "docs-mode";
@@ -23,13 +25,14 @@ function loadMode(): Mode {
     const saved = localStorage.getItem(MODE_KEY);
     if (saved === "view" || saved === "split" || saved === "edit") return saved;
   } catch {
-    // localStorage недоступен — режим по умолчанию.
+    // localStorage is unavailable; use the default mode.
   }
   return "split";
 }
 
 export interface DocsHandle { flush: () => Promise<boolean> }
 const Docs = forwardRef<DocsHandle, { projectId: string; documentId: string; onSeen: (id: string, revision: string) => void }>(function Docs({ projectId, documentId, onSeen }, ref) {
+  const { t } = useI18n();
   const [text, setText] = useState<string | null>(null);
   const [editorVersion, setEditorVersion] = useState(0);
   const [externalUpdate, setExternalUpdate] = useState(false);
@@ -44,7 +47,7 @@ const Docs = forwardRef<DocsHandle, { projectId: string; documentId: string; onS
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [error, setError] = useState<string | null>(null);
 
-  // Текст для сохранения и последний сохранённый — в ref, чтобы сохранить и при закрытии вкладки.
+  // Keep the latest and saved text in refs so edits can also be saved when the tab closes.
   const latest = useRef<string | null>(null);
   const saved = useRef<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -72,7 +75,7 @@ const Docs = forwardRef<DocsHandle, { projectId: string; documentId: string; onS
       conflict.current = false; setHasConflict(false);
       onSeenRef.current(documentId, content.revision);
     } catch (e) {
-      if (alive()) setError("Файл недоступен: " + String(e));
+      if (alive()) setError(translate("File is unavailable: {error}", { error: String(e) }));
     }
   }, [projectId, documentId]);
 
@@ -107,7 +110,7 @@ const Docs = forwardRef<DocsHandle, { projectId: string; documentId: string; onS
         submitted.current = null;
         setStatus("error");
         setError(String(e));
-        if (String(e).includes("другим редактором")) { conflict.current = true; setHasConflict(true); }
+        if (String(e).includes("by another editor")) { conflict.current = true; setHasConflict(true); }
         return false;
       } finally { writes.current -= 1; }
     }));
@@ -119,7 +122,7 @@ const Docs = forwardRef<DocsHandle, { projectId: string; documentId: string; onS
     return true;
   } }), [flush]);
 
-  // Уход со вкладки, из проекта или закрытие окна — сохраняем несохранённое сразу.
+  // Flush unsaved edits immediately when leaving the tab or project, or closing the window.
   useEffect(() => {
     const unregister = registerFlusher(() => { void flush(); });
     return () => {
@@ -141,16 +144,16 @@ const Docs = forwardRef<DocsHandle, { projectId: string; documentId: string; onS
     try {
       localStorage.setItem(MODE_KEY, next);
     } catch {
-      // Не запомним режим — не страшно.
+      // Failure to persist the mode is nonfatal.
     }
   }
 
-  // Превью отстаёт от набора на кадр, чтобы ввод не тормозил на больших документах.
+  // Defer the preview to keep typing responsive in large documents.
   const deferredText = useDeferredValue(text);
   const html = useMemo(() => (deferredText === null ? "" : renderMarkdown(deferredText, dir)), [deferredText, dir]);
 
   if (text === null) {
-    return error ? <div className="docs-load-error"><p className="error">{error}</p><button className="btn" onClick={() => void refresh()}>Повторить</button><p className="muted small">Если файл перемещён, выберите его новое расположение через меню вкладки «⋯».</p></div> : <div className="muted">Загрузка…</div>;
+    return error ? <div className="docs-load-error"><p className="error">{error}</p><button className="btn" onClick={() => void refresh()}>{t("Retry")}</button><p className="muted small">{t("If the file was moved, select its new location from the tab's «⋯» menu.")}</p></div> : <div className="muted">{t("Loading…")}</div>;
   }
 
   const isEmpty = text.trim() === "";
@@ -161,36 +164,36 @@ const Docs = forwardRef<DocsHandle, { projectId: string; documentId: string; onS
         <div className="segmented">
           {MODES.map((m) => (
             <button key={m.id} className={mode === m.id ? "active" : ""} onClick={() => setMode(m.id)}>
-              {m.label}
+              {t(m.label)}
             </button>
           ))}
         </div>
         <span className={`save-status ${status}`}>
-          {status === "saved" && "Сохранено"}
-          {status === "pending" && "Изменено"}
-          {status === "saving" && "Сохранение…"}
-          {status === "error" && "Не сохранено"}
+          {status === "saved" && t("Saved")}
+          {status === "pending" && t("Modified")}
+          {status === "saving" && t("Saving…")}
+          {status === "error" && t("Not saved")}
         </span>
       </div>
 
       {externalUpdate && !hasConflict && <div className="document-update-notice" role="status">
-        <span>Обновлён из файла</span><button className="icon-btn" aria-label="Закрыть уведомление об обновлении" onClick={() => setExternalUpdate(false)}><Icon name="close" /></button>
+        <span>{t("Updated from file")}</span><button className="icon-btn" aria-label={t("Dismiss update notification")} onClick={() => setExternalUpdate(false)}><Icon name="close" /></button>
       </div>}
       {hasConflict && <div className="document-conflict" role="alert">
-        <span>Файл изменён снаружи. Ваши несохранённые правки остались в редакторе; автосохранение приостановлено.</span>
+        <span>{t("The file was changed externally. Your unsaved edits are preserved in the editor; autosave is paused.")}</span>
         <div>
-          <button className="btn small-btn" onClick={() => { void navigator.clipboard.writeText(latest.current ?? "").catch((e) => setError("Не удалось скопировать текст: " + String(e))); }}>Скопировать мои правки</button>
-          <button className="btn small-btn" onClick={() => setReloadConfirm(true)}>Загрузить с диска</button>
+          <button className="btn small-btn" onClick={() => { void navigator.clipboard.writeText(latest.current ?? "").catch((e) => setError(t("Failed to copy text: {error}", { error: String(e) }))); }}>{t("Copy my edits")}</button>
+          <button className="btn small-btn" onClick={() => setReloadConfirm(true)}>{t("Load from disk")}</button>
         </div>
       </div>}
-      {reloadConfirm && <ConfirmDialog title="Загрузить версию с диска?" confirmLabel="Загрузить" danger
+      {reloadConfirm && <ConfirmDialog title={t("Load version from disk?")} confirmLabel={t("Load")} danger
         onCancel={() => setReloadConfirm(false)} onConfirm={() => { setReloadConfirm(false); void refresh(true); }}>
-        <p>Несохранённые правки в редакторе будут заменены содержимым файла. Сначала скопируйте их, если хотите сохранить.</p>
+        <p>{t("Unsaved edits in the editor will be replaced with the file contents. Copy them first if you want to keep them.")}</p>
       </ConfirmDialog>}
       {error && (
         <div className="error-bar docs-error">
           <span>{error}</span>
-          <button className="icon-btn" title="Закрыть" onClick={() => setError(null)}>
+          <button className="icon-btn" title={t("Close")} onClick={() => setError(null)}>
                 <Icon name="close" />
               </button>
         </div>
@@ -206,11 +209,10 @@ const Docs = forwardRef<DocsHandle, { projectId: string; documentId: string; onS
           <div className="docs-pane preview-pane">
             {isEmpty ? (
               <div className="docs-empty muted">
-                <p>Документ пока пуст.</p>
+                <p>{t("This document is empty.")}</p>
                 {mode === "view" && (
                   <button className="btn" onClick={() => setMode("split")}>
-                    Начать писать
-                  </button>
+                    {t("Start writing")}</button>
                 )}
               </div>
             ) : (

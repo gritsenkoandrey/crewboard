@@ -1,6 +1,6 @@
-// Не открываем консольное окно в release-сборке на Windows.
+// Do not open a console window in Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    task_track_lib::run()
+    crewboard_lib::run()
 }

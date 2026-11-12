@@ -1,13 +1,13 @@
 export interface Project {
-  /** Имя папки проекта. Не меняется при переименовании. */
+  /** Project folder name. Does not change when the project is renamed. */
   id: string;
   name: string;
-  /** Время создания, мс с 1970 года. 0 — неизвестно. */
+  /** Creation time in milliseconds since the Unix epoch. 0 means unknown. */
   createdAt: number;
-  /** Полный путь к файлу обложки. */
+  /** Absolute path to the cover image file. */
   coverPath: string | null;
   sourceDir?: string | null;
-  /** Полный путь к папке проекта. */
+  /** Absolute path to the project folder. */
   dir: string;
 }
 
@@ -22,32 +22,32 @@ export interface Task {
   readyForReview?: boolean;
   question?: string;
   reports?: TaskReport[];
-  /** Архивная задача остаётся в исходной колонке. */
+  /** Archived tasks stay in their original column. */
   archived?: boolean;
   number?: number;
-  /** Единственная дата задачи: создание или последнее изменение, в мс. */
+  /** The task's sole timestamp: creation or last update, in milliseconds. */
   updatedAt?: number;
   id: string;
   title: string;
-  /** Описание в markdown. В файле отсутствует, если пустое. */
+  /** Markdown description. Omitted from the file when empty. */
   description?: string;
-  /** id меток проекта. В файле отсутствует, если меток нет. */
+  /** Project label IDs. Omitted from the file when no labels are assigned. */
   labels?: string[];
 }
 
 export interface Label {
   id: string;
   name: string;
-  /** Ключ цвета из палитры (src/labels.ts). */
+  /** Color key from the palette (src/labels.ts). */
   color: string;
 }
 
-/** Колонки доски. Ключи совпадают с полями board.json. */
+/** Board columns. Keys match the fields in board.json. */
 export type ColumnId = "todo" | "inProgress" | "done";
 
 export type Board = Record<ColumnId, Task[]> & {
   taskPrefix: string;
   nextTaskNumber: number;
-  /** Метки проекта. В старых файлах может отсутствовать. */
+  /** Project labels. May be absent in older files. */
   labels?: Label[];
 };

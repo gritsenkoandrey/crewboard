@@ -1,17 +1,26 @@
-# Работа с агентами: первый этап
+# Working with agents: first stage
 
-Task Track хранит общие задания для Codex, Claude и других локальных агентов. Агента запускает пользователь в его приложении. Назначение исполнителя само по себе ничего не запускает.
+[Русская версия](agent-workflow.ru.md) · [Project README](../README.md)
 
-## Настройка
+Crewboard stores shared tasks for Codex, Claude, and other local agents. The user starts the agent
+in its own application. Assigning a participant does not launch anything automatically.
 
-1. В верхней панели откройте «Исполнители». По умолчанию доступны «Я», Codex и Claude. Здесь можно добавить человека или агента для всех проектов выбранной папки данных. Идентификатор исполнителя показан рядом с именем.
-2. Откройте проект и нажмите «Выбрать папку» в строке исходников. Это папка кода, а не папка данных трекера.
-3. Внутри задачи выберите исполнителя и заполните «Условия готовности». Метка Agent необязательна и не назначает исполнителя.
-4. Соберите CLI: `npm run agent:build` из корня рабочей копии Task Track.
+## Setup
 
-## Запуск
+1. Open **Participants** in the top bar. The default entries are “Я”, Codex, and Claude.
+   Add people or agents for all projects in the selected data folder. Each entry shows its ID.
+2. Open a project and select **Choose folder** in the sources row. This is the code folder,
+   separate from the tracker's data folder.
+3. Choose an assignee in the task and fill in **Acceptance criteria**. The Agent label is optional
+   and does not assign a participant.
+4. Build the CLI with `npm run agent:build` from the Crewboard repository root.
 
-Из папки приложения:
+Use **RU / EN** at the right of the top bar to change the interface language. The choice persists locally.
+The examples below use English UI labels; stored project names and participant names are not translated.
+
+## Invocation
+
+From the application repository:
 
 ```powershell
 npm run agent -- --help
@@ -21,95 +30,122 @@ npm run agent -- tasks list --project task-track --assignee codex --status todo
 npm run agent -- tasks show TT-24 --project task-track
 ```
 
-Для агентов удобнее прямой запуск: stdout содержит только JSON, ошибки идут в stderr, код завершения при ошибке — 1.
+Direct invocation is more convenient for agents: stdout contains only JSON, errors go to stderr,
+and a failed command exits with code 1.
 
 ```powershell
-$appDir = (Get-Location).Path # Корень рабочей копии Task Track.
-$tt = Join-Path $appDir "src-tauri/target/debug/tasktrack.exe"
+$appDir = (Get-Location).Path # Crewboard repository root.
+$tt = Join-Path $appDir "src-tauri/target/debug/crewboard-cli.exe"
 & $tt projects list
 & $tt tasks show TT-24 --project task-track
 ```
 
-Выполните настройку `$tt` из корня рабочей копии Task Track. Путь вычисляется для вашей рабочей копии и остаётся доступен при переходе в папку исходников задачи.
+Initialize `$tt` from the repository root. The computed executable path remains usable after changing
+into a task's source directory.
 
-`--project` принимает id папки из `projects list`, а не отображаемое название. Номера ниже — примеры: замените TT-24 на реальную задачу. Если в нескольких проектах одинаковый префикс, для show/claim/report/submit/release укажите `--project`.
+`--project` accepts a folder ID from `projects list`, rather than a display name.
+Task codes are examples: replace TT-24 with your task. If multiple projects share a prefix,
+pass `--project` to show, claim, report, ask, submit, and release.
 
-CLI использует папку данных из настроек приложения. Для другой папки добавьте `--data-dir "../tasktrack-data"` перед командой, например `& $tt --data-dir "../tasktrack-data" projects list`. Замените пример на путь к своей папке данных; относительный путь отсчитывается от текущей папки терминала. Эта опция не меняет настройки приложения. Используйте выбранную папку данных во всех последующих командах.
+The CLI uses the data folder configured in the app. To select another folder, place
+`--data-dir "../crewboard-data"` before the command, for example:
+`& $tt --data-dir "../crewboard-data" projects list`. Replace the example with your actual data folder.
+Relative paths are resolved from the terminal's current directory. This option does not change app settings.
+Use the same data folder for all commands in a session.
 
-## Взять задачу и вернуть результат
+## Claim a task and return the result
 
 ```powershell
 $lease = & $tt tasks claim TT-24 --project task-track --session codex-search-1 | ConvertFrom-Json
 $token = $lease.token
-# Агент выполняет работу в sourceDir, затем передаёт отчёт через stdin (--file -).
-$OutputEncoding = [System.Text.UTF8Encoding]::new($false) # Иначе Windows PowerShell 5.1 передаст кириллицу как «?».
+# Work in sourceDir, then pass the report through stdin (--file -).
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false) # Preserve Unicode in Windows PowerShell 5.1.
 $report = @'
-## Что сделано
+## Changes
 ...
 '@
 $report | & $tt tasks report TT-24 --project task-track --session codex-search-1 --token $token --file -
 & $tt tasks submit TT-24 --project task-track --session codex-search-1 --token $token
 ```
 
-В bash: `& $tt` заменяется на путь к CLI, а отчёт передаётся через heredoc: `"$TT" tasks report TT-24 ... --file - <<'EOF'` … `EOF`.
+In bash, replace `& $tt` with the executable path and pass the report using a heredoc:
+`"$TT" tasks report TT-24 ... --file - <<'EOF'` … `EOF`.
 
-Не создавайте файлы отчётов в папке данных или исходников: report копирует текст в задачу, файл после этого не нужен. Если удобнее файл, пишите его во временную папку (`$env:TEMP`) и удаляйте после report. Текст должен быть в UTF-8.
+Do not create report files in the data or source folder. The report command copies the text into the task,
+so no file needs to remain. If using a file is easier, write it to the temporary folder (`$env:TEMP`)
+and delete it after reporting. Text must be UTF-8.
 
-У каждой сессии должно быть своё имя. Сохраните token из ответа claim. В обычном show/list токен не отображается.
+Every session needs a unique name. Keep the token returned by claim; ordinary show/list responses do not expose it.
 
-- claim атомарно закрепляет задачу за сессией и переводит её в In progress. Второй агент не сможет взять занятую задачу. Задачу, назначенную Codex, не может взять Claude.
-- Без `--agent` claim берёт задачу от её исполнителя (исполнитель должен быть агентом). Для неназначенной задачи укажите `--agent ID`. Если `--agent` не совпадает с исполнителем, ошибка называет нужный id.
-- report добавляет Markdown-отчёт отдельно от исходного описания. Укажите сделанные изменения, проверки, ограничения, коммиты и пути к файлам. Отчёт не заменяет требования.
-- submit требует отчёт именно текущего захвата и ставит отметку «Готово к проверке». Статус остаётся In progress.
-- Пользователь проверяет результат и переводит задачу в Done. Активная сессия закрывается, отчёты остаются.
-- Вопросы и обсуждения пока ведутся в чате агента; в трекере сохраняются вопрос и результат.
+- **claim** atomically assigns the task to the session and moves it to In progress.
+  Another agent cannot claim an occupied task. Claude cannot claim a task assigned to Codex.
+- Without `--agent`, claim uses the task's assignee, who must be an agent. For an unassigned task,
+  pass `--agent ID`. A mismatch produces an error identifying the required participant ID.
+- **report** adds a Markdown report separately from the original description. Include changes,
+  checks, limitations, commits, and file paths. A report does not replace requirements.
+- **submit** requires a report for the current claim and marks the task **Ready for review**.
+  Its status stays In progress.
+- The user reviews the result and moves the task to Done. The active session closes and reports remain.
+- Questions are discussed in the agent chat; the tracker stores the question and the work result.
 
-## Создание задач агентом
+## Creating tasks from an agent
 
 ```powershell
-& $tt tasks create --project task-track --title "Исправить поиск" --description-file "./description.md" --criteria-file "./criteria.md" --assignee codex --label Bug
+& $tt tasks create --project task-track --title "Fix search" --description-file "./description.md" --criteria-file "./criteria.md" --assignee codex --label Bug
 ```
 
-Подготовьте `description.md` и `criteria.md` в текущей папке терминала или укажите пути к своим файлам. Один из них можно передать через stdin, указав `-` вместо пути.
+Prepare `description.md` and `criteria.md` in the current terminal directory, or pass their actual paths.
+One file can be read from stdin by passing `-` instead of a path.
 
-Создаётся обычная задача Not started с новым постоянным номером. Назначение и метка необязательны. `--label` принимает id или название существующей метки.
+This creates a regular Not started task with a new permanent number. Assignment and label are optional.
+`--label` accepts an existing label ID or name.
 
-## Вопрос и освобождение
+## Questions and release
 
 ```powershell
-& $tt tasks ask TT-24 --project task-track --session codex-search-1 --token $token --message "Какие поля нужно искать?"
+& $tt tasks ask TT-24 --project task-track --session codex-search-1 --token $token --message "Which fields should search include?"
 & $tt tasks release TT-24 --project task-track --session codex-search-1 --token $token
 ```
 
-ask показывает «Нужен ответ». submit и release убирают вопрос. release возвращает незавершённую задачу в Not started, сохраняя исполнителя и отчёты.
+ask displays **Needs an answer**. submit and release clear the question.
+release returns an unfinished task to Not started while preserving its assignee and reports.
 
-Если агент завершился и токен потерян, пользователь может нажать «Освободить задачу» внутри задачи или выполнить ручное восстановление:
+If the agent stops and its token is lost, the user can select **Release task** in the task panel
+or recover manually:
 
 ```powershell
 & $tt tasks release TT-24 --project task-track --force
 ```
 
-После освобождения прежний токен больше не принимается. Перед освобождением работающей сессии остановите её в чате, чтобы она не продолжала менять исходники. Эти команды управляют задачами, а не процессами Codex или Claude.
+The previous token is invalid after release. Before releasing a running session, stop its work in chat
+so it does not keep modifying source files. These commands manage tasks, not Codex or Claude processes.
 
-## Общие исполнители и исходники через CLI
+## Shared participants and source folders through CLI
 
 ```powershell
 & $tt participants add --name "Reviewer" --kind human
 & $tt projects set-source --project task-track --path $appDir
 ```
 
-В примере исходниками проекта task-track служит корень рабочей копии Task Track, сохранённый в `$appDir`. Для другого проекта укажите его id и путь к его исходникам.
+This example uses the Crewboard repository root stored in `$appDir` as the sources for the task-track project.
+For another project, pass its ID and source directory.
 
-## Сохранение и параллельная работа
+## Saving and concurrent work
 
-Приложение и CLI используют общий код сохранения и межпроцессную блокировку. Независимые изменения объединяются: например, локальная правка описания сохраняет отчёт агента. При изменении одного и того же поля приложение сообщает о конфликте и сохраняет локальные правки в окне. Их можно скопировать, повторить сохранение или явно загрузить актуальную доску.
+The app and CLI share saving code and interprocess locks. Independent changes are merged; for example,
+a local description edit preserves an agent report. When the same field changes concurrently, the app
+reports a conflict and keeps local edits in the window. Copy them, retry saving, or explicitly load the current board.
 
-Доска обновляется примерно каждые две секунды, когда нет незавершённого сохранения или перетаскивания. Не редактируйте board.json вручную для операций агента: используйте CLI.
+The board refreshes roughly every two seconds when no save or drag operation is in progress.
+Do not edit board.json manually for agent operations; use the CLI.
 
-Исполнители и sourceDir — локальная организация работы, не отдельные учётные записи с аутентификацией. Все процессы работают с правами пользователя. Здесь нет MCP, облачного API, автоматического запуска или очереди задач.
+Participants and sourceDir organize local work; they are not authenticated accounts.
+All processes run with the user's permissions. There is no MCP server, cloud API,
+automatic agent launching, or task queue.
 
-## Пример задания для чата агента
+## Example prompt for the agent chat
 
-Замените `<путь-к-CLI>` на значение `$tt`, а `<папка-данных>` — на путь к выбранной папке данных. Также подставьте id своего проекта и код задачи. Исполнителя указывать не нужно: claim берёт его из задачи.
+Replace `<cli-path>` with `$tt` and `<data-folder>` with the selected data folder.
+Substitute your project ID and task code. The assignee can be omitted because claim reads it from the task.
 
-> Используй CLI Task Track: <путь-к-CLI> с --data-dir <папка-данных>. Прочитай TT-24 в проекте task-track и возьми её через claim с уникальным именем сессии. Работай в sourceDir из ответа. Не меняй board.json напрямую. После работы передай Markdown-отчёт в report через stdin (`--file -`), не создавая файлов, и отправь задачу на проверку через submit. При неясностях используй ask и задай вопрос мне в этом чате. В Done задачу не переводи.
+> Use the Crewboard CLI at <cli-path> with --data-dir <data-folder>. Read TT-24 in project task-track and claim it with a unique session name. Work in sourceDir from the response. Do not edit board.json directly. After finishing, pass a Markdown report to report through stdin (`--file -`) without creating files, then submit the task for review using submit. If anything is unclear, use ask and ask me in this chat. Do not move the task to Done.

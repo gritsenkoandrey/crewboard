@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import { useEffect, useRef } from "react";
 import type { ColumnId, Label, Task } from "../types";
 import { LabelPill } from "../labels";
@@ -13,6 +14,7 @@ interface Props {
   onClose: () => void;
 }
 export default function TaskArchive({ tasks, prefix, labels, onRestore, onOpen, onClose }: Props) {
+  const { t } = useI18n();
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -33,10 +35,10 @@ export default function TaskArchive({ tasks, prefix, labels, onRestore, onOpen, 
           }
         }}>
         <header className="archive-heading">
-          <h2 id="archive-title">Архив <span className="muted">{tasks.length}</span></h2>
-          <button className="icon-btn" title="Закрыть" aria-label="Закрыть архив" onClick={onClose}><Icon name="close" /></button>
+          <h2 id="archive-title">{t("Archive")} <span className="muted">{tasks.length}</span></h2>
+          <button className="icon-btn" title={t("Close")} aria-label={t("Close archive")} onClick={onClose}><Icon name="close" /></button>
         </header>
-        {tasks.length === 0 ? <p className="muted archive-empty">Архив пуст. Задачи можно отправить сюда из панели задачи.</p> : (
+        {tasks.length === 0 ? <p className="muted archive-empty">{t("The archive is empty. Archive tasks from the task panel.")}</p> : (
           <div className="archive-list">
             {tasks.map(({ task, status }) => (
               <div className="archive-row" key={task.id}>
@@ -45,7 +47,7 @@ export default function TaskArchive({ tasks, prefix, labels, onRestore, onOpen, 
                   <button className="archive-task-title" onClick={() => onOpen(task.id)}>{task.title}</button>
                   <div className="task-labels">{labels.filter((label) => task.labels?.includes(label.id)).map((label) => <LabelPill key={label.id} label={label} />)}</div>
                 </div>
-                <button className="btn archive-restore" onClick={() => onRestore(task.id)}><Icon name="restore" />Восстановить</button>
+                <button className="btn archive-restore" onClick={() => onRestore(task.id)}><Icon name="restore" />{t("Restore")}</button>
               </div>
             ))}
           </div>

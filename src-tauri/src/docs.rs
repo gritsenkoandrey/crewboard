@@ -34,7 +34,7 @@ fn revision(bytes: &[u8]) -> String {
 fn external_file(path: &str) -> CmdResult<PathBuf> {
     let path = PathBuf::from(path);
     if !path.is_absolute() || !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("md")) {
-        return Err("Выберите Markdown-файл с расширением .md".into());
+        return Err("Select a Markdown file with the .md extension".into());
     }
     Ok(path)
 }
@@ -51,21 +51,21 @@ fn document_path(dir: &Path, doc: &Document) -> CmdResult<PathBuf> {
 fn valid_name(name: &str) -> CmdResult<String> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 100 {
-        return Err("Название документа должно содержать от 1 до 100 символов".into());
+        return Err("Document name must contain between 1 and 100 characters".into());
     }
     Ok(name.into())
 }
 fn file_path(dir: &Path, file: &str) -> CmdResult<PathBuf> {
     if file.is_empty() || file.contains(['/', '\\', ':']) || file.starts_with('.')
         || !file.to_lowercase().ends_with(".md") || file.chars().any(|c| c.is_control()) {
-        return Err("Некорректное имя файла документа".into());
+        return Err("Invalid document filename".into());
     }
     let path = dir.join(file);
     if path.exists() {
         let real = fs::canonicalize(&path).map_err(|e| e.to_string())?;
         let parent = fs::canonicalize(dir).map_err(|e| e.to_string())?;
         if real.parent() != Some(parent.as_path()) || !real.is_file() {
-            return Err("Файл документа находится вне проекта".into());
+            return Err("Document file is outside the project folder".into());
         }
     }
     Ok(path)
@@ -75,7 +75,7 @@ fn write_index(dir: &Path, docs: &[Document]) -> CmdResult<()> {
 }
 fn read_index(dir: &Path) -> CmdResult<Vec<Document>> {
     let docs: Vec<Document> = match fs::read_to_string(dir.join(INDEX)) {
-        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("Повреждён список документов: {e}"))?,
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("Document list is corrupt: {e}"))?,
         Err(e) if e.kind() == ErrorKind::NotFound => {
             // Migrate legacy README and any Markdown files already present, without touching their content.
             let mut docs = Vec::new();
@@ -92,7 +92,7 @@ fn read_index(dir: &Path) -> CmdResult<Vec<Document>> {
             write_index(dir, &docs)?;
             docs
         }
-        Err(e) => return Err(format!("Не удалось прочитать список документов: {e}")),
+        Err(e) => return Err(format!("Failed to read the document list: {e}")),
     };
     let mut ids = HashSet::new();
     let mut files = HashSet::new();
@@ -100,17 +100,17 @@ fn read_index(dir: &Path) -> CmdResult<Vec<Document>> {
         document_path(dir, doc)?;
         valid_name(&doc.name)?;
         if doc.id.is_empty() || !ids.insert(doc.id.clone()) || !files.insert(doc.external_path.as_ref().unwrap_or(&doc.file).to_lowercase()) {
-            return Err("В списке документов повторяются идентификаторы или файлы".into());
+            return Err("Document list contains duplicate IDs or files".into());
         }
     }
     Ok(docs)
 }
 fn find<'a>(docs: &'a [Document], document_id: &str) -> CmdResult<&'a Document> {
-    docs.iter().find(|d| d.id == document_id).ok_or_else(|| "Документ не найден".into())
+    docs.iter().find(|d| d.id == document_id).ok_or_else(|| "Document not found".into())
 }
 fn check_duplicate(docs: &[Document], name: &str, except: Option<&str>) -> CmdResult<()> {
     if docs.iter().any(|d| Some(d.id.as_str()) != except && d.name.to_lowercase() == name.to_lowercase()) {
-        return Err("Документ с таким названием уже есть".into());
+        return Err("A document with this name already exists".into());
     }
     Ok(())
 }
@@ -132,7 +132,7 @@ fn create_in(dir: &Path, name: &str) -> CmdResult<Vec<Document>> {
 fn reorder_in(dir: &Path, ids: Vec<String>) -> CmdResult<Vec<Document>> {
     let docs = read_index(dir)?;
     let unique: HashSet<_> = ids.iter().collect();
-    if ids.len() != docs.len() || unique.len() != docs.len() { return Err("Некорректный порядок документов".into()); }
+    if ids.len() != docs.len() || unique.len() != docs.len() { return Err("Invalid document order".into()); }
     let ordered = ids.iter().map(|id| find(&docs, id).cloned()).collect::<CmdResult<Vec<_>>>()?;
     write_index(dir, &ordered)?;
     Ok(ordered)
@@ -157,7 +157,7 @@ fn guarded_write(path: &Path, text: &str, base_text: &str) -> CmdResult<()> {
         file.sync_all().map_err(|e| e.to_string())?;
         drop(file);
         let current = fs::read_to_string(path).map_err(|e| e.to_string())?;
-        if current != base_text && current != text { return Err("Документ изменён другим редактором. Ваши правки остались в редакторе.".into()); }
+        if current != base_text && current != text { return Err("Document was changed by another editor. Your edits are preserved in the editor.".into()); }
         fs::rename(&temp, path).map_err(|e| e.to_string())
     })();
     if temp.exists() { let _ = fs::remove_file(&temp); }
@@ -166,22 +166,22 @@ fn guarded_write(path: &Path, text: &str, base_text: &str) -> CmdResult<()> {
 fn save_in(dir: &Path, document_id: &str, text: &str, base_text: &str) -> CmdResult<()> {
     let docs = read_index(dir)?;
     let path = document_path(dir, find(&docs, document_id)?)?;
-    let current = fs::read_to_string(&path).map_err(|e| format!("Не удалось прочитать документ: {e}"))?;
+    let current = fs::read_to_string(&path).map_err(|e| format!("Failed to read the document: {e}"))?;
     if current != base_text && current != text {
-        return Err("Документ изменён другим редактором. Ваши правки остались в редакторе.".into());
+        return Err("Document was changed by another editor. Your edits are preserved in the editor.".into());
     }
     guarded_write(&path, text, base_text)
 }
 fn delete_in(dir: &Path, document_id: &str, recycle: impl FnOnce(&Path) -> CmdResult<()>) -> CmdResult<Vec<Document>> {
     let docs = read_index(dir)?;
     let doc = find(&docs, document_id)?;
-    if doc.external_path.is_some() { return Err("Подключённый файл можно только отключить от проекта".into()); }
+    if doc.external_path.is_some() { return Err("A linked file can only be unlinked from the project".into()); }
     let path = file_path(dir, &doc.file)?;
     let remaining: Vec<Document> = docs.iter().filter(|d| d.id != document_id).cloned().collect();
     write_index(dir, &remaining)?;
     if let Err(e) = recycle(&path) {
         write_index(dir, &docs)?;
-        return Err(format!("Не удалось переместить документ в корзину: {e}"));
+        return Err(format!("Failed to move the document to the Recycle Bin: {e}"));
     }
     Ok(remaining)
 }
@@ -189,7 +189,7 @@ fn delete_in(dir: &Path, document_id: &str, recycle: impl FnOnce(&Path) -> CmdRe
 fn content_in(dir: &Path, document_id: &str) -> CmdResult<DocumentContent> {
     let docs = read_index(dir)?;
     let path = document_path(dir, find(&docs, document_id)?)?;
-    let text = fs::read_to_string(&path).map_err(|e| format!("Не удалось прочитать документ: {e}"))?;
+    let text = fs::read_to_string(&path).map_err(|e| format!("Failed to read the document: {e}"))?;
     let revision = revision(text.as_bytes());
     Ok(DocumentContent { text, dir: path.parent().unwrap_or(dir).to_string_lossy().into_owned(), revision })
 }
@@ -197,7 +197,7 @@ fn revisions_in(dir: &Path) -> CmdResult<Vec<DocumentRevision>> {
     Ok(read_index(dir)?.into_iter().map(|doc| {
         match document_path(dir, &doc).and_then(|path| fs::read(path).map_err(|e| e.to_string())) {
             Ok(bytes) => DocumentRevision { id: doc.id, revision: Some(revision(&bytes)), error: None },
-            Err(e) => DocumentRevision { id: doc.id, revision: None, error: Some(format!("Файл недоступен: {e}")) },
+            Err(e) => DocumentRevision { id: doc.id, revision: None, error: Some(format!("File is unavailable: {e}")) },
         }
     }).collect())
 }
@@ -241,18 +241,18 @@ pub fn delete_document(app: AppHandle, id: String, document_id: String) -> CmdRe
 
 fn link_in(dir: &Path, source: &str, replace_id: Option<&str>) -> CmdResult<Vec<Document>> {
     let path = external_file(source)?;
-    let canonical = fs::canonicalize(&path).map_err(|e| format!("Файл недоступен: {e}"))?;
-    fs::read_to_string(&canonical).map_err(|e| format!("Не удалось прочитать Markdown: {e}"))?;
+    let canonical = fs::canonicalize(&path).map_err(|e| format!("File is unavailable: {e}"))?;
+    fs::read_to_string(&canonical).map_err(|e| format!("Failed to read Markdown: {e}"))?;
     let mut docs = read_index(dir)?;
     for doc in &docs {
         if Some(doc.id.as_str()) != replace_id && fs::canonicalize(document_path(dir, doc)?).ok().as_ref() == Some(&canonical) {
-            return Err("Этот файл уже подключён к проекту".into());
+            return Err("This file is already linked to the project".into());
         }
     }
     if let Some(id) = replace_id {
         find(&docs, id)?;
         let doc = docs.iter_mut().find(|d| d.id == id).unwrap();
-        if doc.external_path.is_none() { return Err("Это внутренний документ проекта".into()); }
+        if doc.external_path.is_none() { return Err("This is an internal project document".into()); }
         doc.external_path = Some(path.to_string_lossy().into_owned());
         doc.file = path.file_name().unwrap().to_string_lossy().into_owned();
     } else {
@@ -267,7 +267,7 @@ fn link_in(dir: &Path, source: &str, replace_id: Option<&str>) -> CmdResult<Vec<
 }
 fn unlink_in(dir: &Path, document_id: &str) -> CmdResult<Vec<Document>> {
     let docs = read_index(dir)?;
-    if find(&docs, document_id)?.external_path.is_none() { return Err("Это внутренний документ проекта".into()); }
+    if find(&docs, document_id)?.external_path.is_none() { return Err("This is an internal project document".into()); }
     let remaining: Vec<Document> = docs.into_iter().filter(|d| d.id != document_id).collect();
     write_index(dir, &remaining)?; Ok(remaining)
 }

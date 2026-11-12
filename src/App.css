@@ -55,7 +55,7 @@ body {
   background: var(--bg);
 }
 
-/* Тонкие неброские полосы прокрутки, как в md-reader: без стрелок и фона дорожки. */
+/* Subtle, thin scrollbars like md-reader: no arrows or track background. */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -113,7 +113,7 @@ body {
   background: var(--accent-hover);
 }
 
-/* Экран выбора папки */
+/* Folder selection screen */
 .setup {
   max-width: 460px;
   padding: 32px;
@@ -139,7 +139,7 @@ body {
   color: var(--danger);
 }
 
-/* Основной экран */
+/* Main screen */
 .app {
   height: 100%;
   display: flex;
@@ -271,7 +271,7 @@ body {
   color: var(--danger);
 }
 
-/* Сетка проектов */
+/* Project grid */
 .project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -420,7 +420,7 @@ body {
   color: var(--danger);
 }
 
-/* Диалог */
+/* Dialog */
 .overlay {
   position: fixed;
   inset: 0;
@@ -456,7 +456,7 @@ body {
   margin-top: 16px;
 }
 
-/* Страница проекта занимает всю высоту: доска и документация прокручиваются внутри вкладки. */
+/* The project page fills the height; the board and documents scroll within their tabs. */
 .project-page {
   max-width: 1200px;
   height: 100%;
@@ -485,7 +485,7 @@ body {
   border-radius: 8px;
 }
 
-/* Кнопки обложки появляются при наведении на неё. */
+/* Show cover actions on hover. */
 .cover-actions {
   position: absolute;
   inset: 0;
@@ -577,13 +577,13 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  /* Отступа сверху здесь нет: закреплённая полоса фильтра прилипала бы ниже края,
-     и над ней просвечивали бы карточки. Отступ задают сами вкладки (.board-toolbar, .docs). */
-  /* Отступ от полосы прокрутки, чтобы кнопки и колонки в неё не упирались. */
+  /* No top padding here: it would push the sticky filter bar below the edge,
+     exposing cards above it. Each tab provides its own padding (.board-toolbar, .docs). */
+  /* Leave space between the scrollbar and the buttons and columns. */
   padding-right: 12px;
 }
 
-/* Документация */
+/* Documents */
 .docs {
   height: 100%;
   display: flex;
@@ -681,7 +681,7 @@ body {
   margin-top: 60px;
 }
 
-/* Оформление отрисованного markdown */
+/* Rendered Markdown styles */
 .markdown {
   font-size: 15px;
   line-height: 1.65;
@@ -797,12 +797,12 @@ body {
   background: var(--bg-soft);
 }
 
-/* Канбан-доска */
+/* Kanban board */
 .board {
   display: grid;
   grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 16px;
-  /* Колонки одной высоты: пустое место под карточками короткой колонки тоже принимает перетаскивание. */
+  /* Equal-height columns allow drops in the empty space below shorter card lists. */
   align-items: stretch;
 }
 
@@ -824,13 +824,13 @@ body {
   transition: outline-color 0.15s;
 }
 
-/* Подсветка колонки, когда над её пустым местом держат карточку. */
+/* Highlight a column when a card is dragged over its empty space. */
 .column.drop-target {
   outline-color: color-mix(in srgb, var(--col-color) 60%, transparent);
 }
 
-/* Заголовок колонки прилипает сразу под полосой фильтра. Фон — как у колонки,
-   а отрицательные поля перекрывают её внутренний отступ, чтобы карточки не выглядывали по краям. */
+/* Column headers stick directly below the filter bar. Match the column background,
+   and use negative margins to cover its padding so cards do not show at the edges. */
 .column-header {
   position: sticky;
   top: var(--toolbar-h, 0px);
@@ -844,7 +844,7 @@ body {
   background: var(--col-bg, var(--bg-soft));
 }
 
-/* Название колонки — плашка с цветной точкой. */
+/* Display the column title as a badge with a colored dot. */
 .column-pill {
   display: inline-flex;
   align-items: center;
@@ -868,13 +868,13 @@ body {
   color: var(--count-color, var(--muted));
 }
 
-/* Not started — красная колонка. */
+/* The Not started column is red. */
 .column-todo {
   --col-color: #e45b5b;
 }
 
-/* Колонки окрашены целиком: фон колонки, карточки и плашка.
-   Оттенки смешиваются с фоном темы, поэтому работают и в светлой, и в тёмной. */
+/* Tint the entire column: its background, cards, and title badge.
+   Blend shades with the theme background to support both light and dark themes. */
 .column-inProgress {
   --col-color: #e9a93a;
 }
@@ -899,7 +899,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* Пустая колонка тоже должна принимать карточки. */
+  /* Empty columns must also accept dropped cards. */
   min-height: 40px;
   border-radius: 6px;
   transition: background 0.15s;
@@ -974,7 +974,7 @@ body {
   color: var(--danger);
 }
 
-/* Метки */
+/* Labels */
 .task-body {
   flex: 1;
   min-width: 0;
@@ -1030,7 +1030,7 @@ body {
   background: var(--label-color, var(--muted));
 }
 
-/* Выбор меток в панели задачи */
+/* Label picker in the task panel */
 .label-picker {
   position: relative;
 }
@@ -1131,7 +1131,7 @@ body {
   font-size: 13px;
 }
 
-/* Фильтр над доской */
+/* Board filter bar */
 .label-filter {
   display: flex;
   flex-wrap: wrap;
@@ -1140,8 +1140,8 @@ body {
   font-size: 13px;
 }
 
-/* Полоса фильтра закреплена вверху области прокрутки: карточки уезжают под неё.
-   Отступ снизу — внутри полосы и с фоном, чтобы в зазоре не просвечивали карточки. */
+/* Pin the filter bar to the top of the scroll area so cards scroll underneath it.
+   Keep bottom spacing inside the bar with a background so cards do not show through the gap. */
 .board-toolbar {
   position: sticky;
   top: 0;
@@ -1210,7 +1210,7 @@ body {
   outline-offset: 2px;
 }
 
-/* Окно «Метки проекта» */
+/* Project labels dialog */
 .label-manager {
   width: min(460px, calc(100% - 32px));
 }
@@ -1316,7 +1316,7 @@ body {
   font-size: 12px;
 }
 
-/* Панель задачи */
+/* Task panel */
 .panel-backdrop {
   position: fixed;
   inset: 0;
@@ -1369,7 +1369,7 @@ body {
   color: var(--danger);
 }
 
-/* Переключатель статуса: те же цвета, что у колонок. */
+/* The status switch uses the same colors as the columns. */
 .status-switch {
   display: flex;
   flex-wrap: wrap;
@@ -1502,7 +1502,7 @@ body {
   flex-wrap: wrap;
 }
 
-/* Палитра остаётся внутри прокручиваемого списка меток. */
+/* Keep the palette inside the scrollable label list. */
 .label-manager .color-palette {
   position: static;
   margin-top: 6px;

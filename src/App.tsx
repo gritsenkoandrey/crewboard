@@ -1,4 +1,7 @@
+import { useI18n } from "./i18n";
 import AgentSettings from "./components/AgentSettings";
+import Icon from "./components/Icon";
+import LanguageSwitcher from "./components/LanguageSwitcher";
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { flushAll } from "./saveTracker";
@@ -20,7 +23,9 @@ import ProjectPage from "./components/ProjectPage";
 import type { Project } from "./types";
 
 export default function App() {
+  const { t } = useI18n();
   const [agentSettings, setAgentSettings] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
   const [info, setInfo] = useState<DataDirInfo | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -40,8 +45,8 @@ export default function App() {
     getDataDir().then(setInfo, (e) => setError(String(e)));
   }, []);
 
-  // Перед закрытием окна дописываем отложенные и незавершённые сохранения.
-  // Tauri ждёт завершения обработчика и только потом закрывает окно.
+  // Flush pending and unfinished saves before closing the window.
+  // Tauri waits for the handler to finish before closing the window.
   useEffect(() => {
     let unlisten: Promise<(() => void) | undefined>;
     try {
@@ -49,7 +54,7 @@ export default function App() {
         .onCloseRequested(() => flushAll())
         .catch(() => undefined);
     } catch {
-      // Вне окна Tauri (например, в обычном браузере) подписаться не на что.
+      // Outside a Tauri window (for example, in a browser), there is no window event to subscribe to.
       return;
     }
     return () => {
@@ -57,12 +62,12 @@ export default function App() {
     };
   }, []);
 
-  // Список перечитываем при каждой смене папки данных.
+  // Reload the list whenever the data folder changes.
   useEffect(() => {
     if (ready) void reload();
   }, [ready, info?.path, reload]);
 
-  /** Выполняет действие и показывает ошибку в полосе сверху, если оно не удалось. */
+  /** Runs an action and displays any error in the top bar. */
   async function run(action: () => Promise<void>) {
     setError(null);
     try {
@@ -98,7 +103,7 @@ export default function App() {
   }
 
   if (!info) {
-    return <div className="center muted">{error ?? "Загрузка…"}</div>;
+    return <div className="center muted">{error ?? t("Loading…")}</div>;
   }
 
   if (!ready) {
@@ -108,29 +113,38 @@ export default function App() {
   const openProject = projects.find((p) => p.id === openId) ?? null;
 
   return (
-    <div className="app">
-      <header className="topbar">
+    <div className="app" aria-busy={deletingProject}>
+      <header className="topbar" inert={deletingProject}>
         <button className="logo" onClick={() => setOpenId(null)}>
-          Task Track
+          Crewboard
         </button>
         <div className="data-dir muted" title={info.path ?? ""}>
           {info.path}
         </div>
-        <button className="btn" onClick={() => setAgentSettings(true)}>Исполнители</button>
-        <button className="btn" onClick={chooseFolder}>
-          Сменить папку
-        </button>
+        <div className="topbar-actions">
+          <LanguageSwitcher />
+          <button className="topbar-action" title={t("Participants")} aria-label={t("Participants")}
+            aria-haspopup="dialog" aria-expanded={agentSettings} onClick={() => setAgentSettings(true)}>
+            <Icon name="users" />
+            <span>{t("Participants")}</span>
+          </button>
+          <button className="topbar-action" title={t("Change data folder")} aria-label={t("Change data folder")} onClick={chooseFolder}>
+            <Icon name="folder" />
+            <span>{t("Change folder")}</span>
+          </button>
+        </div>
       </header>
       {error && (
         <div className="error-bar">
           <span>{error}</span>
-          <button className="icon-btn" title="Закрыть" onClick={() => setError(null)}>
+          <button className="icon-btn" title={t("Close")} onClick={() => setError(null)}>
             ×
           </button>
         </div>
       )}
       {agentSettings && <AgentSettings onClose={() => setAgentSettings(false)} />}
-      <main className="content">
+      {deletingProject && <div className="project-deletion-status" role="status">{t("Moving project to the Recycle Bin…")}</div>}
+      <main className="content" inert={deletingProject}>
         {openProject ? (
           <ProjectPage
             key={openProject.id}
@@ -153,12 +167,15 @@ export default function App() {
             onRename={(id, name) => run(async () => replaceProject(await renameProject(id, name)))}
             onChangeCover={changeCover}
             onRemoveCover={deleteCover}
-            onDelete={(id) =>
-              run(async () => {
-                await deleteProject(id);
-                setProjects((list) => list.filter((p) => p.id !== id));
-              })
-            }
+            onDelete={async (id) => {
+              setDeletingProject(true);
+              try {
+                await run(async () => {
+                  await deleteProject(id);
+                  setProjects((list) => list.filter((p) => p.id !== id));
+                });
+              } finally { setDeletingProject(false); }
+            }}
           />
         )}
       </main>
@@ -167,28 +184,26 @@ export default function App() {
 }
 
 function SetupScreen({ info, error, onChoose }: { info: DataDirInfo; error: string | null; onChoose: () => void }) {
+  const { t } = useI18n();
   return (
     <div className="center">
       <div className="setup">
-        <h1>Task Track</h1>
+        <div className="setup-language"><LanguageSwitcher /></div>
+        <h1>Crewboard</h1>
         {info.missing ? (
           <p className="warning">
-            Папка с данными недоступна:
-            <br />
+            {t("Data folder is unavailable:")}<br />
             <code>{info.path}</code>
             <br />
-            Подключите диск или выберите другую папку.
-          </p>
+            {t("Connect the drive or select another folder.")}</p>
         ) : (
           <p>
-            Выберите папку, где будут храниться проекты. Лучше не на диске C: — тогда данные переживут
-            переустановку Windows. Можно выбрать папку в OneDrive или Dropbox для бэкапа.
+            {t("Choose a folder for your projects. Use a separate drive or a backed-up folder to keep your data after reinstalling Windows.")}
           </p>
         )}
-        <p className="muted">Если папка уже использовалась раньше, все проекты в ней подхватятся.</p>
+        <p className="muted">{t("Existing projects in this folder will be loaded automatically.")}</p>
         <button className="btn primary" onClick={onChoose}>
-          Выбрать папку
-        </button>
+          {t("Choose folder")}</button>
         {error && <p className="error">{error}</p>}
       </div>
     </div>

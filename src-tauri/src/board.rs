@@ -1,6 +1,6 @@
-//! Канбан-доска проекта: файл `board.json` в папке проекта.
-//! Порядок задач в массиве — это их порядок в колонке.
-//! Метки проекта хранятся здесь же: так удаление метки и снятие её с задач — одна запись.
+//! Project Kanban board: the `board.json` file in the project folder.
+//! Task order in each array determines the order within its column.
+//! Store project labels here too, so deleting a label and removing it from tasks takes one write.
 
 use crate::projects::{project_dir, BOARD_FILE};
 use crate::{write_atomic, CmdResult};
@@ -11,11 +11,11 @@ use std::io::ErrorKind;
 use tauri::AppHandle;
 use std::path::Path;
 
-/// Должно совпадать с TASK_TITLE_MAX в src/components/Board.tsx.
+/// Must match TASK_TITLE_MAX in src/components/Board.tsx.
 const MAX_TITLE_CHARS: usize = 2000;
-/// Защита от случайной вставки огромного текста; обычному описанию хватит с запасом.
+/// Guard against accidentally pasting huge text; leave ample room for normal descriptions.
 const MAX_DESCRIPTION_CHARS: usize = 200_000;
-/// Должно совпадать с LABEL_NAME_MAX в src/labels.ts.
+/// Must match LABEL_NAME_MAX in src/labels.ts.
 const MAX_LABEL_CHARS: usize = 40;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -29,10 +29,10 @@ pub struct Task {
     updated_at: Option<u64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     archived: bool,
-    /// Подробное описание в markdown. Пустое не пишем в файл, старые доски без поля читаются как есть.
+    /// Detailed Markdown description. Omit when empty and accept older boards without this field.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     description: String,
-    /// id меток проекта.
+    /// Project label IDs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     labels: Vec<String>,
     /// Extension fields (assignment, sessions, reports) survive edits from older views.
@@ -40,7 +40,7 @@ pub struct Task {
     extra: serde_json::Map<String, serde_json::Value>,
 }
 
-/// Метка проекта. Цвет — ключ из палитры интерфейса (`red`, `blue`…), а не произвольный hex.
+/// Project label. Its color is a UI palette key (`red`, `blue`, etc.), not an arbitrary hex value.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Label {
     id: String,
@@ -85,42 +85,42 @@ impl Board {
     }
 }
 
-/// Проверяет доску перед записью и убирает с задач ссылки на несуществующие метки.
+/// Validates the board before saving and removes references to nonexistent labels from tasks.
 pub(crate) fn validate(mut board: Board) -> CmdResult<Board> {
     let mut label_ids = HashSet::new();
     for label in &board.labels {
         let name = label.name.trim();
         if name.is_empty() {
-            return Err("Название метки не может быть пустым".into());
+            return Err("Label name cannot be empty".into());
         }
         if name.chars().count() > MAX_LABEL_CHARS {
-            return Err(format!("Название метки длиннее {MAX_LABEL_CHARS} символов"));
+            return Err(format!("Label name exceeds {MAX_LABEL_CHARS} characters"));
         }
         if !label_ids.insert(label.id.clone()) {
-            return Err(format!("Повторяющийся id метки: {}", label.id));
+            return Err(format!("Duplicate label ID: {}", label.id));
         }
     }
 
     let mut task_ids = HashSet::new();
     for task in board.tasks() {
         if task.title.trim().is_empty() {
-            return Err("Название задачи не может быть пустым".into());
+            return Err("Task title cannot be empty".into());
         }
         if task.title.chars().count() > MAX_TITLE_CHARS {
-            return Err(format!("Название задачи длиннее {MAX_TITLE_CHARS} символов"));
+            return Err(format!("Task title exceeds {MAX_TITLE_CHARS} characters"));
         }
         if task.description.chars().count() > MAX_DESCRIPTION_CHARS {
-            return Err(format!("Описание задачи длиннее {MAX_DESCRIPTION_CHARS} символов"));
+            return Err(format!("Task description exceeds {MAX_DESCRIPTION_CHARS} characters"));
         }
         if task.extra.get("acceptanceCriteria").and_then(serde_json::Value::as_str).is_some_and(|v| v.chars().count() > MAX_DESCRIPTION_CHARS) {
-            return Err("Условия готовности длиннее 200000 символов".into());
+            return Err("Acceptance criteria exceed 200000 characters".into());
         }
         if !task_ids.insert(task.id.clone()) {
-            return Err(format!("Повторяющийся id задачи: {}", task.id));
+            return Err(format!("Duplicate task ID: {}", task.id));
         }
     }
 
-    // Висячие ссылки на удалённые метки и повторы молча убираем: это не ошибка пользователя.
+    // Silently remove dangling label references and duplicates; these are not user errors.
     for task in board.tasks_mut() {
         let mut seen = HashSet::new();
         task.labels.retain(|id| label_ids.contains(id) && seen.insert(id.clone()));
@@ -153,9 +153,9 @@ pub(crate) fn initialize_metadata(board: &mut Board, name: &str) {
 pub(crate) fn load(dir: &Path) -> CmdResult<Board> {
     let path = dir.join(BOARD_FILE);
     let mut board: Board = match fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("Файл доски повреждён: {e}"))?,
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("Board file is corrupt: {e}"))?,
         Err(e) if e.kind() == ErrorKind::NotFound => new_board(),
-        Err(e) => return Err(format!("Не удалось прочитать доску: {e}")),
+        Err(e) => return Err(format!("Failed to read the board: {e}")),
     };
     let original = serde_json::to_string(&board).map_err(|e| e.to_string())?;
     let meta: serde_json::Value = fs::read_to_string(dir.join("project.json")).ok()
@@ -276,6 +276,6 @@ mod tests {
     fn task_without_labels_is_written_without_field() {
         let b = board(r#"{ "todo": [{ "id": "a", "title": "Задача" }] }"#);
         let text = serde_json::to_string(&b.todo[0]).unwrap();
-        assert!(!text.contains("labels"), "пустой список меток задачи не пишем: {text}");
+        assert!(!text.contains("labels"), "omit an empty task label list: {text}");
     }
 }

@@ -1,7 +1,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Project } from "../types";
 
-/** Пары цветов для заглушки обложки. Цвет выбирается по id, поэтому у проекта он постоянный. */
+/** Placeholder cover color pairs. Choose by ID to keep each project's colors stable. */
 const GRADIENTS = [
   ["#f6d365", "#fda085"],
   ["#a1c4fd", "#c2e9fb"],

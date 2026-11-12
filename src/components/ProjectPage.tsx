@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { Project } from "../types";
@@ -17,6 +18,7 @@ interface Props {
   onRemoveCover: () => Promise<void>;
 }
 export default function ProjectPage({ project, onBack, onRename, onChangeCover, onRemoveCover }: Props) {
+  const { t } = useI18n();
   const [sourceDir, setSourceDirState] = useState<string | null>(project.sourceDir ?? null);
   useEffect(() => { void getSourceDir(project.id).then(setSourceDirState).catch(() => undefined); }, [project.id]);
   const [tab, setTab] = useState("board");
@@ -139,13 +141,13 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
         <div className="header-cover-wrap">
           <ProjectCover project={project} className="header-cover" />
           <div className="cover-actions">
-            <button onClick={() => void onChangeCover()}>{project.coverPath ? "Сменить" : "Добавить обложку"}</button>
-            {project.coverPath && <button onClick={() => void onRemoveCover()}>Убрать</button>}
+            <button onClick={() => void onChangeCover()}>{project.coverPath ? t("Change") : t("Add cover")}</button>
+            {project.coverPath && <button onClick={() => void onRemoveCover()}>{t("Remove cover")}</button>}
           </div>
         </div>
         <div className="project-header-main">
           <button className="link-btn" onClick={() => void leave()}>
-            ← Все проекты
+            ← {t("All projects")}
           </button>
           {renaming ? (
             <InlineInput
@@ -158,62 +160,62 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
               onCancel={() => setRenaming(false)}
             />
           ) : (
-            <h1 className="project-title" title="Нажмите, чтобы переименовать" onClick={() => setRenaming(true)}>
+            <h1 className="project-title" title={t("Click to rename")} onClick={() => setRenaming(true)}>
               {project.name}
             </h1>
           )}
           <div className="project-source">
-            <span className="muted small" title={sourceDir ?? "Папка кода для агента"}>{sourceDir ? "Исходники: " + sourceDir : "Исходники не выбраны"}</span>
+            <span className="muted small" title={sourceDir ?? t("Source folder for the agent")}>{sourceDir ? t("Sources: ") + sourceDir : t("Sources not selected")}</span>
             <button className="link-btn" disabled={busy} onClick={() => void run(async () => {
               const path = await pickFolder(sourceDir ?? undefined);
               if (path) setSourceDirState(await setSourceDir(project.id, path));
-            })}>{sourceDir ? "Изменить" : "Выбрать папку"}</button>
+            })}>{sourceDir ? t("Change") : t("Choose folder")}</button>
           </div>
           <div className="document-tabs-row">
-            <nav className="tabs document-tabs" aria-label="Разделы проекта">
-              <button className={tab === "board" ? "active" : ""} onClick={() => selectTab("board")} disabled={busy}>Доска</button>
+            <nav className="tabs document-tabs" aria-label={t("Project sections")}>
+              <button className={tab === "board" ? "active" : ""} onClick={() => selectTab("board")} disabled={busy}>{t("Board")}</button>
               {documents.map((doc) => (
                 <div key={doc.id} className={"document-tab " + (tab === doc.id ? "active" : "")}>
                   <button className={tab === doc.id ? "active document-tab-name" : "document-tab-name"}
-                    title={doc.name + " · " + (doc.externalPath ?? doc.file)} onClick={() => selectTab(doc.id)} disabled={busy}>{doc.externalPath && <Icon name="link" />}<span>{doc.name}</span>{changed.has(doc.id) && <span className="document-change-dot" title="Файл изменён" aria-label="Файл изменён" />}</button>
-                  <button className="document-tab-menu" title={"Действия: " + doc.name} aria-label={"Действия с документом «" + doc.name + "»"}
+                    title={doc.name + " · " + (doc.externalPath ?? doc.file)} onClick={() => selectTab(doc.id)} disabled={busy}>{doc.externalPath && <Icon name="link" />}<span>{doc.name}</span>{changed.has(doc.id) && <span className="document-change-dot" title={t("File changed")} aria-label={t("File changed")} />}</button>
+                  <button className="document-tab-menu" title={t("Actions: {name}", { name: doc.name })} aria-label={t("Document actions: {name}", { name: doc.name })}
                     aria-expanded={menu?.id === doc.id} onClick={() => setMenu(menu?.id === doc.id ? null : doc)} disabled={busy}><Icon name="more" /></button>
                 </div>
               ))}
             </nav>
-            <button className="icon-btn document-add" title="Добавить документ" aria-label="Добавить документ" aria-expanded={addMenu}
+            <button className="icon-btn document-add" title={t("Add document")} aria-label={t("Add document")} aria-expanded={addMenu}
               disabled={!loaded || busy} onClick={() => { setMenu(null); setAddMenu(!addMenu); }}><Icon name="plus" /></button>
           </div>
         </div>
       </div>
       {addMenu && <div className="document-actions document-add-options" onKeyDown={(e) => { if (e.key === "Escape") setAddMenu(false); }}>
-        <button className="btn" onClick={() => { setAddMenu(false); setNameDialog({}); }}><Icon name="plus" /> Новый документ</button>
-        <button className="btn" onClick={() => connect()}><Icon name="link" /> Подключить Markdown-файл…</button>
-        <button className="icon-btn" aria-label="Закрыть добавление документов" onClick={() => setAddMenu(false)}><Icon name="close" /></button>
+        <button className="btn" onClick={() => { setAddMenu(false); setNameDialog({}); }}><Icon name="plus" /> {t("New document")}</button>
+        <button className="btn" onClick={() => connect()}><Icon name="link" /> {t("Connect Markdown file…")}</button>
+        <button className="icon-btn" aria-label={t("Close document options")} onClick={() => setAddMenu(false)}><Icon name="close" /></button>
       </div>}
       {menu && (
         <div className="document-actions" onKeyDown={(e) => { if (e.key === "Escape") setMenu(null); }}>
           <span className="muted document-actions-name">{menu.name}</span>
-          <button className="btn small-btn" onClick={() => { setNameDialog({ document: menu }); setMenu(null); }}>Переименовать</button>
-          <button className="icon-btn" title="Переместить влево" aria-label="Переместить документ влево" disabled={documents[0]?.id === menu.id} onClick={() => moveDocument(menu, -1)}><Icon name="back" /></button>
-          <button className="icon-btn" title="Переместить вправо" aria-label="Переместить документ вправо" disabled={documents[documents.length - 1]?.id === menu.id} onClick={() => moveDocument(menu, 1)}><Icon name="back" style={{ transform: "rotate(180deg)" }} /></button>
+          <button className="btn small-btn" onClick={() => { setNameDialog({ document: menu }); setMenu(null); }}>{t("Rename")}</button>
+          <button className="icon-btn" title={t("Move left")} aria-label={t("Move left")} disabled={documents[0]?.id === menu.id} onClick={() => moveDocument(menu, -1)}><Icon name="back" /></button>
+          <button className="icon-btn" title={t("Move right")} aria-label={t("Move right")} disabled={documents[documents.length - 1]?.id === menu.id} onClick={() => moveDocument(menu, 1)}><Icon name="back" style={{ transform: "rotate(180deg)" }} /></button>
           {menu.externalPath && <>
-            <button className="btn small-btn" onClick={() => void run(async () => { await revealItemInDir(menu.externalPath!); })}>Показать в папке</button>
-            <button className="btn small-btn" onClick={() => connect(menu)}>Выбрать другой файл</button>
+            <button className="btn small-btn" onClick={() => void run(async () => { await revealItemInDir(menu.externalPath!); })}>{t("Show in folder")}</button>
+            <button className="btn small-btn" onClick={() => connect(menu)}>{t("Choose another file")}</button>
           </>}
-          <button className="icon-btn danger-hover" title={menu.externalPath ? "Отключить от проекта" : "Удалить в корзину"} aria-label={menu.externalPath ? "Отключить документ от проекта" : "Удалить документ в корзину"} onClick={() => { setDeleting(menu); setMenu(null); }}><Icon name={menu.externalPath ? "link" : "trash"} /></button>
-          <button className="icon-btn" title="Закрыть" aria-label="Закрыть действия документа" onClick={() => setMenu(null)}><Icon name="close" /></button>
+          <button className="icon-btn danger-hover" title={menu.externalPath ? t("Unlink from project") : t("Move to Recycle Bin")} aria-label={menu.externalPath ? t("Unlink from project") : t("Delete document")} onClick={() => { setDeleting(menu); setMenu(null); }}><Icon name={menu.externalPath ? "link" : "trash"} /></button>
+          <button className="icon-btn" title={t("Close")} aria-label={t("Close document actions")} onClick={() => setMenu(null)}><Icon name="close" /></button>
         </div>
       )}
-      {error && <div className="error-bar"><span>{error}</span><button className="icon-btn" aria-label="Закрыть ошибку" onClick={() => setError(null)}><Icon name="close" /></button></div>}
+      {error && <div className="error-bar"><span>{error}</span><button className="icon-btn" aria-label={t("Dismiss error")} onClick={() => setError(null)}><Icon name="close" /></button></div>}
       <div className="tab-content" aria-busy={busy}>
-        {!loaded ? <p className="muted">Загрузка…</p> : activeDocument ? (
+        {!loaded ? <p className="muted">{t("Loading…")}</p> : activeDocument ? (
           <Docs ref={editor} key={project.id + ":" + activeDocument.id + ":" + (activeDocument.externalPath ?? "")} projectId={project.id} documentId={activeDocument.id} onSeen={markSeen} />
         ) : <Board projectId={project.id} projectDir={project.dir} />}
       </div>
-      {nameDialog && <DocumentNameDialog initial={nameDialog.document?.name ?? ""} title={nameDialog.document ? "Переименовать документ" : "Новый документ"}
+      {nameDialog && <DocumentNameDialog initial={nameDialog.document?.name ?? ""} title={nameDialog.document ? t("Rename document") : t("New document")}
         busy={busy} error={error} onSubmit={saveName} onClose={() => { if (!busy) { setNameDialog(null); setError(null); } }} />}
-      {deleting && <ConfirmDialog title={deleting.externalPath ? "Отключить документ?" : "Удалить документ?"} confirmLabel={deleting.externalPath ? "Отключить" : "В корзину"} danger
+      {deleting && <ConfirmDialog title={deleting.externalPath ? t("Unlink document?") : t("Delete document?")} confirmLabel={deleting.externalPath ? t("Unlink") : t("Recycle")} danger
         onCancel={() => setDeleting(null)} onConfirm={() => {
           const document = deleting;
           void run(async () => {
@@ -222,13 +224,14 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
             if (tab === document.id) remember("board");
             setDocuments(docs); setDeleting(null);
           });
-        }}><p>{deleting.externalPath ? "Вкладка «" + deleting.name + "» будет убрана из проекта. Исходный файл останется на месте." : "Документ «" + deleting.name + "» будет перемещён в корзину Windows. Его можно восстановить оттуда."}</p></ConfirmDialog>}
+        }}><p>{deleting.externalPath ? t("The “{name}” tab will be removed from the project. The original file will stay in place.", { name: deleting.name }) : t("Document “{name}” will be moved to the Windows Recycle Bin. You can restore it from there.", { name: deleting.name })}</p></ConfirmDialog>}
     </div>
   );
 }
 function DocumentNameDialog({ initial, title, busy, error, onSubmit, onClose }: {
   initial: string; title: string; busy: boolean; error: string | null; onSubmit: (name: string) => Promise<void>; onClose: () => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState(initial);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { input.current?.focus(); input.current?.select(); }, []);
@@ -237,11 +240,11 @@ function DocumentNameDialog({ initial, title, busy, error, onSubmit, onClose }: 
     <form className="dialog" role="dialog" aria-modal="true" aria-labelledby="document-name-title" onSubmit={submit}
       onMouseDown={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
       <h2 id="document-name-title">{title}</h2>
-      <input ref={input} className="inline-input document-name-input" aria-label="Название документа" placeholder="Например, Маркетинг" maxLength={100}
+      <input ref={input} className="inline-input document-name-input" aria-label={t("Document name")} placeholder={t("For example, Marketing")} maxLength={100}
         value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="dialog-actions"><button type="button" className="btn" onClick={onClose} disabled={busy}>Отмена</button>
-        <button className="btn primary" type="submit" disabled={!name.trim() || busy}>{busy ? "Сохранение…" : initial ? "Сохранить" : "Создать"}</button></div>
+      <div className="dialog-actions"><button type="button" className="btn" onClick={onClose} disabled={busy}>{t("Cancel")}</button>
+        <button className="btn primary" type="submit" disabled={!name.trim() || busy}>{busy ? t("Saving…") : initial ? t("Save") : t("Create")}</button></div>
     </form>
   </div>;
 }

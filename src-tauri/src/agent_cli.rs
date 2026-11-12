@@ -3,20 +3,20 @@ use crate::{agents,board,storage,CmdResult};
 use serde_json::{Value,json};
 use std::{collections::BTreeMap,fs,path::{Path,PathBuf}};
 
-const HELP:&str = r#"Task Track agent CLI (JSON output)
-  tasktrack [--data-dir PATH] projects list
-  tasktrack [--data-dir PATH] projects set-source --project ID --path PATH
-  tasktrack [--data-dir PATH] participants list
-  tasktrack [--data-dir PATH] participants add --name NAME --kind human|agent
-  tasktrack [--data-dir PATH] tasks list --project ID [--assignee ID] [--status todo|inProgress|done] [--label NAME] [--archived]
-  tasktrack [--data-dir PATH] tasks show TT-24 [--project ID]
-  tasktrack [--data-dir PATH] tasks create --project ID --title TITLE [--description-file PATH] [--criteria-file PATH] [--assignee ID] [--label NAME]
-  tasktrack [--data-dir PATH] tasks claim TT-24 --session SESSION [--agent ID] [--project ID]
-  tasktrack [--data-dir PATH] tasks report TT-24 --session SESSION --token TOKEN --file PATH|- [--project ID]
-  tasktrack [--data-dir PATH] tasks ask TT-24 --session SESSION --token TOKEN --message TEXT [--project ID]
-  tasktrack [--data-dir PATH] tasks submit TT-24 --session SESSION --token TOKEN [--project ID]
-  tasktrack [--data-dir PATH] tasks release TT-24 --session SESSION --token TOKEN [--project ID]
-  tasktrack [--data-dir PATH] tasks release TT-24 --force [--project ID]
+const HELP:&str = r#"Crewboard agent CLI (JSON output)
+  crewboard-cli [--data-dir PATH] projects list
+  crewboard-cli [--data-dir PATH] projects set-source --project ID --path PATH
+  crewboard-cli [--data-dir PATH] participants list
+  crewboard-cli [--data-dir PATH] participants add --name NAME --kind human|agent
+  crewboard-cli [--data-dir PATH] tasks list --project ID [--assignee ID] [--status todo|inProgress|done] [--label NAME] [--archived]
+  crewboard-cli [--data-dir PATH] tasks show TT-24 [--project ID]
+  crewboard-cli [--data-dir PATH] tasks create --project ID --title TITLE [--description-file PATH] [--criteria-file PATH] [--assignee ID] [--label NAME]
+  crewboard-cli [--data-dir PATH] tasks claim TT-24 --session SESSION [--agent ID] [--project ID]
+  crewboard-cli [--data-dir PATH] tasks report TT-24 --session SESSION --token TOKEN --file PATH|- [--project ID]
+  crewboard-cli [--data-dir PATH] tasks ask TT-24 --session SESSION --token TOKEN --message TEXT [--project ID]
+  crewboard-cli [--data-dir PATH] tasks submit TT-24 --session SESSION --token TOKEN [--project ID]
+  crewboard-cli [--data-dir PATH] tasks release TT-24 --session SESSION --token TOKEN [--project ID]
+  crewboard-cli [--data-dir PATH] tasks release TT-24 --force [--project ID]
 claim returns a token. Keep it for report/ask/submit/release. --force is manual recovery.
 claim without --agent uses the task's assignee; an unassigned task needs --agent.
 --file - (and --description-file -/--criteria-file -) reads UTF-8 text from stdin; no temporary file needed.
@@ -30,23 +30,23 @@ impl Args {
         let mut words=Vec::new(); let mut flags=BTreeMap::new(); let mut args=args.into_iter();
         while let Some(arg)=args.next(){
             if let Some(key)=arg.strip_prefix("--") {
-                if !allowed.contains(&key) || flags.contains_key(key){return Err(format!("Неизвестный или повторный параметр: {arg}"));}
-                let value=if ["archived","force"].contains(&key){"true".into()}else{args.next().filter(|s|!s.starts_with("--")).ok_or_else(||format!("Нет значения для {arg}"))?};
+                if !allowed.contains(&key) || flags.contains_key(key){return Err(format!("Unknown or duplicate option: {arg}"));}
+                let value=if ["archived","force"].contains(&key){"true".into()}else{args.next().filter(|s|!s.starts_with("--")).ok_or_else(||format!("Missing value for {arg}"))?};
                 flags.insert(key.into(),value);
             }else{words.push(arg);}
         } Ok(Self{words,flags})
     }
     fn get(&self,key:&str)->Option<&str>{self.flags.get(key).map(String::as_str)}
-    fn need(&self,key:&str)->CmdResult<&str>{self.get(key).filter(|s|!s.trim().is_empty()).ok_or_else(||format!("Укажите --{key}"))}
+    fn need(&self,key:&str)->CmdResult<&str>{self.get(key).filter(|s|!s.trim().is_empty()).ok_or_else(||format!("Specify --{key}"))}
 }
 fn data_root(args:&Args)->CmdResult<PathBuf>{
     let path=if let Some(path)=args.get("data-dir"){PathBuf::from(path)}else{
-        let config=if cfg!(target_os="windows"){PathBuf::from(std::env::var("APPDATA").map_err(|_|"APPDATA недоступна; укажите --data-dir")?).join("com.local.tasktrack/config.json")}
+        let config=if cfg!(target_os="windows"){PathBuf::from(std::env::var("APPDATA").map_err(|_|"APPDATA is unavailable; specify --data-dir")?).join("com.local.tasktrack/config.json")}
         else{PathBuf::from(std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_|format!("{}/.config",std::env::var("HOME").unwrap_or_default()))).join("com.local.tasktrack/config.json")};
-        let value:Value=serde_json::from_str(&fs::read_to_string(config).map_err(|_|"Не найдены настройки Task Track; укажите --data-dir")?).map_err(|e|e.to_string())?;
-        PathBuf::from(value["dataDir"].as_str().ok_or("В настройках не выбрана папка данных")?)
+        let value:Value=serde_json::from_str(&fs::read_to_string(config).map_err(|_|"Crewboard settings not found; specify --data-dir")?).map_err(|e|e.to_string())?;
+        PathBuf::from(value["dataDir"].as_str().ok_or("No data folder is selected in settings")?)
     };
-    if !path.is_dir(){return Err("Папка данных не найдена".into());} Ok(path)
+    if !path.is_dir(){return Err("Data folder not found".into());} Ok(path)
 }
 fn projects(root:&Path)->CmdResult<Vec<Value>>{
     let mut list=Vec::new();
@@ -64,16 +64,16 @@ fn projects(root:&Path)->CmdResult<Vec<Value>>{
     list.sort_by(|a,b|a["id"].as_str().cmp(&b["id"].as_str())); Ok(list)
 }
 fn resolve(root:&Path,args:&Args,code:&str)->CmdResult<(PathBuf,u64)>{
-    let (prefix,num)=code.rsplit_once('-').ok_or("Укажите номер задачи, например TT-24")?;
-    let number:u64=num.parse().map_err(|_|"Некорректный номер задачи")?;
+    let (prefix,num)=code.rsplit_once('-').ok_or("Specify a task code, for example TT-24")?;
+    let number:u64=num.parse().map_err(|_|"Invalid task number")?;
     let candidates:Vec<Value>=projects(root)?.into_iter().filter(|p|p["prefix"].as_str().is_some_and(|s|s.eq_ignore_ascii_case(prefix)) && args.get("project").is_none_or(|id|p["id"]==id)).collect();
-    if candidates.len()!=1{return Err("Префикс проекта не найден или неоднозначен. Укажите --project с id из projects list".into());}
+    if candidates.len()!=1{return Err("Project prefix not found or ambiguous. Specify --project with an ID from projects list".into());}
     Ok((agents::project_dir(root,candidates[0]["id"].as_str().unwrap())?,number))
 }
 fn columns()->[&'static str;3]{["todo","inProgress","done"]}
 fn locate(v:&Value,number:u64)->CmdResult<(&'static str,usize)>{
     for col in columns(){if let Some(index)=v[col].as_array().unwrap().iter().position(|t|t["number"]==number){return Ok((col,index));}}
-    Err("Задача не найдена".into())
+    Err("Task not found".into())
 }
 fn redact(mut task:Value)->Value{if let Some(claim)=task.get_mut("claim").and_then(Value::as_object_mut){claim.remove("token");}task}
 fn view(dir:&Path,v:&Value,col:&str,t:&Value)->CmdResult<Value>{
@@ -83,18 +83,18 @@ fn view(dir:&Path,v:&Value,col:&str,t:&Value)->CmdResult<Value>{
 fn read_text(args:&Args,key:&str)->CmdResult<String>{
     let path=args.need(key)?;
     let bytes=if path=="-"{
-        let mut buf=Vec::new();std::io::Read::read_to_end(&mut std::io::stdin(),&mut buf).map_err(|e|format!("Не удалось прочитать stdin для --{key}: {e}"))?;buf
-    }else{fs::read(path).map_err(|e|format!("Не удалось прочитать --{key}: {e}"))?};
+        let mut buf=Vec::new();std::io::Read::read_to_end(&mut std::io::stdin(),&mut buf).map_err(|e|format!("Failed to read stdin for --{key}: {e}"))?;buf
+    }else{fs::read(path).map_err(|e|format!("Failed to read --{key}: {e}"))?};
     decode_text(bytes,key)
 }
 fn decode_text(bytes:Vec<u8>,key:&str)->CmdResult<String>{
     let bytes=bytes.strip_prefix(b"\xEF\xBB\xBF").map(<[u8]>::to_vec).unwrap_or(bytes);
-    let text=String::from_utf8(bytes).map_err(|_|format!("Текст --{key} должен быть в UTF-8"))?;
-    if text.chars().count()>200_000{return Err("Текст длиннее 200000 символов".into());} Ok(text)
+    let text=String::from_utf8(bytes).map_err(|_|format!("Text for --{key} must be UTF-8"))?;
+    if text.chars().count()>200_000{return Err("Text exceeds 200000 characters".into());} Ok(text)
 }
 fn owner(task:&Value,args:&Args)->CmdResult<()>{
     if !task["claim"].is_object() || task["claim"]["token"]!=args.need("token")? || task["claim"]["sessionId"]!=args.need("session")? {
-        return Err("Задача занята другой сессией или уже освобождена".into());
+        return Err("Task is claimed by another session or has already been released".into());
     } Ok(())
 }
 fn move_task(v:&mut Value,from:&str,index:usize,to:&str){if from!=to{let task=v[from].as_array_mut().unwrap().remove(index);v[to].as_array_mut().unwrap().push(task);}}
@@ -118,7 +118,7 @@ pub fn execute(arguments:Vec<String>)->Result<Value,String>{
     if action=="list"{
         let dir=agents::project_dir(&root,args.need("project")?)?;
         let _lock=storage::lock(&dir,"board.lock")?;let v=serde_json::to_value(board::load(&dir)?).map_err(|e|e.to_string())?;
-        if args.get("status").is_some_and(|s|!columns().contains(&s)){return Err("Неизвестный статус".into());}
+        if args.get("status").is_some_and(|s|!columns().contains(&s)){return Err("Unknown status".into());}
         let mut result=Vec::new();
         for col in columns(){for task in v[col].as_array().unwrap(){
             if task["archived"]==true && args.get("archived").is_none(){continue;}
@@ -133,7 +133,7 @@ pub fn execute(arguments:Vec<String>)->Result<Value,String>{
     if action=="create"{
         let dir=agents::project_dir(&root,args.need("project")?)?;
         let title=args.need("title")?.trim().to_string();
-        if args.get("description-file")==Some("-") && args.get("criteria-file")==Some("-"){return Err("stdin (-) можно использовать только для одного файла".into());}
+        if args.get("description-file")==Some("-") && args.get("criteria-file")==Some("-"){return Err("stdin (-) can only be used for one file".into());}
         let description=if args.get("description-file").is_some(){read_text(&args,"description-file")?}else{String::new()};
         let criteria=if args.get("criteria-file").is_some(){read_text(&args,"criteria-file")?}else{String::new()};
         if let Some(id)=args.get("assignee"){agents::participant(&root,id)?;}
@@ -142,7 +142,7 @@ pub fn execute(arguments:Vec<String>)->Result<Value,String>{
             let number=v["nextTaskNumber"].as_u64().unwrap_or(1);v["nextTaskNumber"]=json!(number+1);
             let mut labels=Vec::new();
             if let Some(label)=args.get("label"){
-                let id=v["labels"].as_array().unwrap().iter().find(|l|l["id"]==label || l["name"].as_str().is_some_and(|s|s.eq_ignore_ascii_case(label))).ok_or("Метка не найдена")?["id"].clone(); labels.push(id);
+                let id=v["labels"].as_array().unwrap().iter().find(|l|l["id"]==label || l["name"].as_str().is_some_and(|s|s.eq_ignore_ascii_case(label))).ok_or("Label not found")?["id"].clone(); labels.push(id);
             }
             let mut task=json!({"id":task_id,"title":title,"number":number,"description":description,"acceptanceCriteria":criteria,"labels":labels,"updatedAt":agents::now()});
             if let Some(id)=args.get("assignee"){task["assigneeId"]=json!(id);}
@@ -151,36 +151,36 @@ pub fn execute(arguments:Vec<String>)->Result<Value,String>{
         let v=serde_json::to_value(result).map_err(|e|e.to_string())?;
         let t=v["todo"].as_array().unwrap().iter().find(|t|t["id"]==task_id).unwrap();return view(&dir,&v,"todo",t);
     }
-    let code=args.words.get(2).ok_or("Укажите номер задачи")?;
+    let code=args.words.get(2).ok_or("Specify a task code")?;
     let (dir,number)=resolve(&root,&args,code)?;
     if action=="show"{
         let _lock=storage::lock(&dir,"board.lock")?;let v=serde_json::to_value(board::load(&dir)?).map_err(|e|e.to_string())?;
         let (col,index)=locate(&v,number)?;return view(&dir,&v,col,&v[col][index]);
     }
-    // Без --agent claim берёт исполнителя задачи; список загружается до блокировки доски.
+    // Without --agent, claim uses the task assignee; load participants before locking the board.
     let people=if action=="claim"{Some(agents::participants(&root)?)}else{None};
-    if let (Some(people),Some(id))=(&people,args.get("agent")){if !people.iter().any(|p|p.id==id){return Err(format!("Исполнитель не найден: {id}"));}}
+    if let (Some(people),Some(id))=(&people,args.get("agent")){if !people.iter().any(|p|p.id==id){return Err(format!("Participant not found: {id}"));}}
     let report=if action=="report"{Some(read_text(&args,"file")?)}else{None};
-    if report.as_ref().is_some_and(|s|s.trim().is_empty()){return Err("Отчёт не может быть пустым".into());}
+    if report.as_ref().is_some_and(|s|s.trim().is_empty()){return Err("Report cannot be empty".into());}
     let mut token=None;
     let result=agents::transact(&dir,|v|{
         let (col,index)=locate(v,number)?;
         let task=&mut v[col][index];
-        if task["archived"]==true{return Err("Задача находится в архиве".into());}
+        if task["archived"]==true{return Err("Task is archived".into());}
         match action{
             "claim"=>{
-                if col=="done"{return Err("Задача уже завершена".into());}
-                if task["claim"].is_object() || task["readyForReview"]==true{return Err("Задача уже занята или ожидает проверки".into());}
+                if col=="done"{return Err("Task is already done".into());}
+                if task["claim"].is_object() || task["readyForReview"]==true{return Err("Task is already claimed or awaiting review".into());}
                 let assignee=task["assigneeId"].as_str().filter(|id|!id.is_empty());
                 let agent_id=match (args.get("agent"),assignee){
-                    (Some(id),Some(current)) if id!=current=>return Err(format!("Задача назначена на {current}. Укажите --agent {current} или не указывайте --agent")),
+                    (Some(id),Some(current)) if id!=current=>return Err(format!("Task is assigned to {current}. Specify --agent {current} or omit --agent")),
                     (Some(id),_)=>id,
                     (None,Some(current))=>current,
-                    (None,None)=>return Err("Задача не назначена. Укажите --agent".into()),
+                    (None,None)=>return Err("Task is unassigned. Specify --agent".into()),
                 };
-                let agent=people.as_ref().unwrap().iter().find(|p|p.id==agent_id).ok_or_else(||format!("Исполнитель не найден: {agent_id}"))?;
-                if agent.kind!="agent"{return Err(format!("Задача назначена на {agent_id} — это не агент. Взять задачу через claim может только исполнитель типа agent"));}
-                let session=args.need("session")?; if session.chars().count()>120{return Err("Слишком длинное имя сессии".into());}
+                let agent=people.as_ref().unwrap().iter().find(|p|p.id==agent_id).ok_or_else(||format!("Participant not found: {agent_id}"))?;
+                if agent.kind!="agent"{return Err(format!("Task is assigned to {agent_id}, who is not an agent. Only participants of type agent can claim tasks"));}
+                let session=args.need("session")?; if session.chars().count()>120{return Err("Session name is too long".into());}
                 let lease=agents::unique();token=Some(lease.clone());
                 task["assigneeId"]=json!(agent.id);task["claim"]=json!({"assigneeId":agent.id,"sessionId":session,"token":lease,"id":agents::unique(),"startedAt":agents::now()});
                 task["readyForReview"]=json!(false);task.as_object_mut().unwrap().remove("question");
@@ -193,11 +193,11 @@ pub fn execute(arguments:Vec<String>)->Result<Value,String>{
                 task["reports"].as_array_mut().unwrap().push(entry);
                 task["updatedAt"]=json!(agents::now());
             },
-            "ask"=>{owner(task,&args)?;let message=args.need("message")?;if message.chars().count()>10_000{return Err("Вопрос длиннее 10000 символов".into());}task["question"]=json!(message);task["readyForReview"]=json!(false);task["updatedAt"]=json!(agents::now());},
+            "ask"=>{owner(task,&args)?;let message=args.need("message")?;if message.chars().count()>10_000{return Err("Question exceeds 10000 characters".into());}task["question"]=json!(message);task["readyForReview"]=json!(false);task["updatedAt"]=json!(agents::now());},
             "submit"=>{
                 owner(task,&args)?;
                 let session=args.need("session")?;
-                if !task["reports"].as_array().is_some_and(|r|r.iter().any(|r|r["sessionId"]==session && r["claimId"]==task["claim"]["id"])){return Err("Сначала добавьте отчёт текущей сессии командой report".into());}
+                if !task["reports"].as_array().is_some_and(|r|r.iter().any(|r|r["sessionId"]==session && r["claimId"]==task["claim"]["id"])){return Err("Add a report for the current claim using the report command first".into());}
                 task["readyForReview"]=json!(true);task.as_object_mut().unwrap().remove("question");task["updatedAt"]=json!(agents::now());move_task(v,col,index,"inProgress");
             },
             "release"=>{

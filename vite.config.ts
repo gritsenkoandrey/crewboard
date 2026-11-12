@@ -7,7 +7,7 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react()],
-  // Не скрываем ошибки Rust и работаем на фиксированном порту, который ждёт Tauri.
+  // Keep Rust errors visible and use the fixed port expected by Tauri.
   clearScreen: false,
   server: {
     port: 1420,

@@ -3,7 +3,7 @@ use crate::{board::{Board, validate}, CmdResult};
 use serde_json::{Value, Map, json};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 const COLS: [&str; 3] = ["todo", "inProgress", "done"];
-fn conflict(path: &str) -> String { format!("Одновременное изменение {path}. Ваши правки сохранены в окне; обновите их после проверки актуальной доски.") }
+fn conflict(path: &str) -> String { format!("Concurrent change to {path}. Your edits are preserved in this window; update them after reviewing the current board.") }
 fn value(base: &Value, local: &Value, remote: &Value, path: &str) -> CmdResult<Value> {
     if local == base { return Ok(remote.clone()); }
     if remote == base || local == remote { return Ok(local.clone()); }
@@ -31,7 +31,7 @@ fn merge_labels(base: &Value, local: &Value, remote: &Value) -> CmdResult<Value>
     let ids: BTreeSet<_> = b.keys().chain(l.keys()).chain(r.keys()).collect();
     let mut items = BTreeMap::new();
     for id in ids {
-        let v = value(b.get(id).unwrap_or(&Value::Null),l.get(id).unwrap_or(&Value::Null),r.get(id).unwrap_or(&Value::Null),"метки")?;
+        let v = value(b.get(id).unwrap_or(&Value::Null),l.get(id).unwrap_or(&Value::Null),r.get(id).unwrap_or(&Value::Null),"labels")?;
         if !v.is_null() { items.insert(id.clone(),v); }
     }
     let mut ordered = Vec::new();
@@ -51,23 +51,23 @@ pub(crate) fn merge(base: &Board, local: &Board, remote: &Board) -> CmdResult<Bo
     for id in ids {
         let entry = match (bt.get(id),lt.get(id),rt.get(id)) {
             (Some(base),Some(local),Some(remote)) => {
-                let col = value(&json!(base.0),&json!(local.0),&json!(remote.0),"статуса задачи")?.as_str().unwrap().to_string();
-                let mut task = value(&base.1,&local.1,&remote.1,&format!("задачи {id}"))?;
+                let col = value(&json!(base.0),&json!(local.0),&json!(remote.0),"task status")?.as_str().unwrap().to_string();
+                let mut task = value(&base.1,&local.1,&remote.1,&format!("task {id}"))?;
                 if remote.1["claim"].is_object() && local.1["assigneeId"] != base.1["assigneeId"] && local.1["assigneeId"] != remote.1["assigneeId"] {
-                    return Err("Сначала освободите задачу, занятую сессией агента".into());
+                    return Err("Release the task claimed by an agent session first".into());
                 }
-                if remote.1["claim"].is_object() && local.1["archived"] != base.1["archived"] { return Err("Сначала освободите задачу перед архивированием".into()); }
+                if remote.1["claim"].is_object() && local.1["archived"] != base.1["archived"] { return Err("Release the task before archiving it".into()); }
                 if col == "done" && base.0 != "done" { task.as_object_mut().unwrap().remove("claim"); task["readyForReview"] = json!(false); task.as_object_mut().unwrap().remove("question"); }
                 Some((col,task))
             },
             (Some(base),None,Some(remote)) => {
-                if base != remote || remote.1["claim"].is_object() { return Err(conflict("удаляемой задачи")); } None
+                if base != remote || remote.1["claim"].is_object() { return Err(conflict("task being deleted")); } None
             },
-            (Some(base),Some(local),None) => { if local != base { return Err(conflict("удалённой задачи")); } None },
+            (Some(base),Some(local),None) => { if local != base { return Err(conflict("deleted task")); } None },
             (None,Some(local),None) => {
                 let mut task = local.1.clone(); task["number"] = json!(next); next += 1; Some((local.0.clone(),task))
             },
-            (None,Some(local),Some(remote)) => { if local != remote { return Err(conflict("новой задачи")); } Some(remote.clone()) },
+            (None,Some(local),Some(remote)) => { if local != remote { return Err(conflict("new task")); } Some(remote.clone()) },
             (_,None,Some(remote)) => Some(remote.clone()),
             _ => None,
         };
@@ -84,7 +84,7 @@ pub(crate) fn merge(base: &Board, local: &Board, remote: &Board) -> CmdResult<Bo
         r[col] = json!(list);
     }
     r["labels"] = merge_labels(&b,&l,&r)?;
-    r["taskPrefix"] = value(&b["taskPrefix"],&l["taskPrefix"],&r["taskPrefix"],"префикса проекта")?;
+    r["taskPrefix"] = value(&b["taskPrefix"],&l["taskPrefix"],&r["taskPrefix"],"project prefix")?;
     r["nextTaskNumber"] = json!(next.max(l["nextTaskNumber"].as_u64().unwrap_or(1)));
     validate(serde_json::from_value(r).map_err(|e| e.to_string())?)
 }

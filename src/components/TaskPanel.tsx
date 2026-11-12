@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import Icon from "./Icon";
 import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { handleMarkdownClick, renderMarkdown } from "../markdown";
@@ -14,15 +15,15 @@ interface Props {
   taskCode: string;
   column: ColumnId;
   columns: { id: ColumnId; title: string }[];
-  /** Папка проекта: относительно неё открываются картинки в описании. */
+  /** Project folder used to resolve relative image paths in the description. */
   projectDir: string;
   titleMaxLength: number;
-  /** Все метки проекта. */
+  /** All project labels. */
   labels: Label[];
   participants: Participant[];
   onRelease: () => Promise<void>;
   onChange: (patch: TaskPatch) => void;
-  /** Метки применяются сразу, без отложенного сохранения. */
+  /** Apply label changes immediately, without delayed saving. */
   onSetLabels: (ids: string[]) => void;
   onCreateLabel: (name: string) => void;
   onMove: (column: ColumnId) => void;
@@ -35,9 +36,9 @@ interface Props {
 const AUTOSAVE_MS = 500;
 
 /**
- * Боковая панель задачи: название, статус и описание в markdown.
- * Правки копятся и сохраняются пачкой: описание — через полсекунды после ввода,
- * название — при уходе из поля, а всё несохранённое — при закрытии панели или окна.
+ * Task side panel: title, status, and Markdown description.
+ * Batch edits: save the description half a second after typing,
+ * the title on blur, and all unsaved edits when the panel or window closes.
  */
 export default function TaskPanel({
   task,
@@ -58,6 +59,7 @@ export default function TaskPanel({
   onDelete,
   onClose,
 }: Props) {
+  const { t, locale } = useI18n();
   const [title, setTitle] = useState(task.title);
   const [criteria, setCriteria] = useState(task.acceptanceCriteria ?? "");
   const [descriptionVersion, setDescriptionVersion] = useState(0);
@@ -65,7 +67,7 @@ export default function TaskPanel({
   const [description, setDescription] = useState(task.description ?? "");
   const descriptionRef = useRef(description);
   descriptionRef.current = description;
-  // Пустое описание сразу открываем в редакторе, заполненное — в просмотре.
+  // Open empty descriptions in the editor and existing descriptions in preview mode.
   const [editing, setEditing] = useState(!task.description);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +91,7 @@ export default function TaskPanel({
     if (Object.keys(patch).length > 0) onChangeRef.current(patch);
   }, []);
 
-  // Закрытие панели, переход к другой задаче или закрытие окна — дописываем несохранённое.
+  // Flush unsaved edits when closing the panel or window, or switching to another task.
   useEffect(() => {
     const unregister = registerFlusher(flush);
     return () => {
@@ -98,7 +100,7 @@ export default function TaskPanel({
     };
   }, [flush]);
 
-  // Высота поля названия подстраивается под текст.
+  // Resize the title input to fit its text.
   useLayoutEffect(() => {
     const el = titleRef.current;
     if (!el) return;
@@ -114,7 +116,7 @@ export default function TaskPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, confirmDelete, releaseConfirm]);
 
-  // Название попадает в pending сразу при вводе, чтобы сохраниться, даже если панель закроют по Esc.
+  // Queue title edits immediately so they are saved even when Escape closes the panel.
   function onTitleChange(value: string) {
     setTitle(value);
     const trimmed = value.trim();
@@ -123,7 +125,7 @@ export default function TaskPanel({
   }
 
   function commitTitle() {
-    // Пустое название не сохраняем — возвращаем прежнее.
+    // Revert an empty title instead of saving it.
     if (!title.trim()) setTitle(task.title);
     flush();
   }
@@ -141,7 +143,7 @@ export default function TaskPanel({
   return (
     <>
       <div className="panel-backdrop" onMouseDown={onClose}>
-        <aside className="task-panel" role="dialog" aria-label="Задача" onMouseDown={(e) => e.stopPropagation()}>
+        <aside className="task-panel" role="dialog" aria-label={t("Task")} onMouseDown={(e) => e.stopPropagation()}>
           <div className="panel-top">
             <div className="status-switch">
               {columns.map((c) => (
@@ -157,23 +159,23 @@ export default function TaskPanel({
               ))}
             </div>
             <div className="panel-actions">
-              <button className="icon-btn" disabled={!!task.claim} title={task.claim ? "Сначала освободите задачу" : task.archived ? "Восстановить" : "В архив"} aria-label={task.archived ? "Восстановить задачу" : "В архив"}
+              <button className="icon-btn" disabled={!!task.claim} title={task.claim ? t("Release the task first") : task.archived ? t("Restore") : t("Archive task")} aria-label={task.archived ? t("Restore task") : t("Archive task")}
                 onClick={() => { flush(); task.archived ? onRestore() : onArchive(); }}>
                 <Icon name={task.archived ? "restore" : "archive"} />
               </button>
-              <button className="icon-btn danger-hover" disabled={!!task.claim} title={task.claim ? "Сначала освободите задачу" : "Удалить задачу"} onClick={() => setConfirmDelete(true)}>
+              <button className="icon-btn danger-hover" disabled={!!task.claim} title={task.claim ? t("Release the task first") : t("Delete task")} onClick={() => setConfirmDelete(true)}>
                 <Icon name="trash" />
               </button>
-              <button className="icon-btn" title="Закрыть (Esc)" onClick={onClose}>
+              <button className="icon-btn" title={t("Close (Esc)")} onClick={onClose}>
                 <Icon name="close" />
               </button>
             </div>
           </div>
   
-          {task.archived && <span className="muted small">Задача в архиве</span>}
+          {task.archived && <span className="muted small">{t("Task is archived")}</span>}
           <div className="task-metadata">
             <span className="task-code">{taskCode}</span>
-            <span className="muted">Изменена: {task.updatedAt ? <time dateTime={new Date(task.updatedAt).toISOString()}>{new Date(task.updatedAt).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })}</time> : "неизвестно"}</span>
+            <span className="muted">{t("Updated:")} {task.updatedAt ? <time dateTime={new Date(task.updatedAt).toISOString()}>{new Date(task.updatedAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })}</time> : t("unknown")}</span>
           </div>
           <textarea
             ref={titleRef}
@@ -181,7 +183,7 @@ export default function TaskPanel({
             rows={1}
             value={title}
             maxLength={titleMaxLength}
-            placeholder="Название задачи"
+            placeholder={t("Task title")}
             onChange={(e) => onTitleChange(e.target.value)}
             onBlur={commitTitle}
             onKeyDown={(e) => {
@@ -193,18 +195,18 @@ export default function TaskPanel({
           />
 
           <div className="agent-assignment">
-            <label htmlFor="task-assignee">Исполнитель</label>
+            <label htmlFor="task-assignee">{t("Assignee")}</label>
             <select id="task-assignee" value={task.assigneeId ?? ""} disabled={!!task.claim} onChange={(e) => onChange({ assigneeId: e.target.value })}>
-              <option value="">Не назначен</option>
-              {participants.map((p) => <option key={p.id} value={p.id}>{p.name}{p.kind === "agent" ? " · агент" : ""}</option>)}
+              <option value="">{t("Unassigned")}</option>
+              {participants.map((p) => <option key={p.id} value={p.id}>{p.name}{p.kind === "agent" ? t(" · agent") : ""}</option>)}
             </select>
           </div>
           {task.claim && <div className="agent-session">
-            <span className="muted">Сессия: {task.claim.sessionId}</span>
-            <button className="link-btn" onClick={() => { flush(); setReleaseConfirm(true); }}>Освободить задачу</button>
+            <span className="muted">{t("Session: {session}", { session: task.claim.sessionId })}</span>
+            <button className="link-btn" onClick={() => { flush(); setReleaseConfirm(true); }}>{t("Release task")}</button>
           </div>}
-          {task.readyForReview && <div className="agent-review" role="status">Готово к проверке — после проверки переместите задачу в Done.</div>}
-          {task.question && <div className="agent-question"><strong>Нужен ответ</strong><p>{task.question}</p></div>}
+          {task.readyForReview && <div className="agent-review" role="status">{t("Ready for review — move the task to Done after reviewing it.")}</div>}
+          {task.question && <div className="agent-question"><strong>{t("Needs an answer")}</strong><p>{task.question}</p></div>}
           <LabelPicker
             labels={labels}
             selected={task.labels ?? []}
@@ -216,24 +218,31 @@ export default function TaskPanel({
           />
 
           <details className="agent-criteria">
-            <summary>Условия готовности{criteria ? " · заполнены" : ""}</summary>
-            <textarea aria-label="Условия готовности" placeholder="Что должно работать и как это проверить" rows={3} value={criteria}
+            <summary>{t("Acceptance criteria")}{criteria ? t(" · filled in") : ""}</summary>
+            <textarea aria-label={t("Acceptance criteria")} placeholder={t("What should work and how to verify it")} rows={3} value={criteria}
               onChange={(e) => { const value = e.target.value; setCriteria(value); pending.current.acceptanceCriteria = value; window.clearTimeout(timer.current); timer.current = window.setTimeout(flush, AUTOSAVE_MS); }} onBlur={flush} />
           </details>
           {(task.reports?.length ?? 0) > 0 && <details className="agent-reports">
-            <summary>Результаты работы · {task.reports!.length}</summary>
+            <summary>{t("Work reports · {count}", { count: task.reports!.length })}</summary>
             <div className="agent-report-list">{[...task.reports!].reverse().map((report, index) => (
               <article key={report.createdAt + ":" + index}>
-                <header className="muted small">{participants.find((p) => p.id === report.authorId)?.name ?? report.authorId} · {new Date(report.createdAt).toLocaleString("ru-RU")} · {report.sessionId}</header>
+                <header className="muted small">{participants.find((p) => p.id === report.authorId)?.name ?? report.authorId} · {new Date(report.createdAt).toLocaleString(locale)} · {report.sessionId}</header>
                 <div className="markdown" onClick={(e) => handleMarkdownClick(e, setError)} dangerouslySetInnerHTML={{ __html: renderMarkdown(report.text, projectDir) }} />
               </article>
             ))}</div>
           </details>}
           <div className="panel-section-header">
-            <span className="muted">Описание</span>
+            <span className="muted">{t("Description")}</span>
             {(description || editing) && (
-              <button className="link-btn" onClick={() => (editing ? (flush(), setEditing(false)) : setEditing(true))}>
-                {editing ? "Готово" : "Редактировать"}
+              <button className="link-btn" onClick={() => {
+                if (editing) {
+                  flush();
+                  onClose();
+                } else {
+                  setEditing(true);
+                }
+              }}>
+                {editing ? t("Done") : t("Edit")}
               </button>
             )}
           </div>
@@ -241,7 +250,7 @@ export default function TaskPanel({
           {error && (
             <div className="error-bar panel-error">
               <span>{error}</span>
-              <button className="icon-btn" title="Закрыть" onClick={() => setError(null)}>
+              <button className="icon-btn" title={t("Close")} onClick={() => setError(null)}>
                 <Icon name="close" />
               </button>
             </div>
@@ -255,39 +264,38 @@ export default function TaskPanel({
             ) : description.trim() ? (
               <article
                 className="markdown panel-preview"
-                title="Двойной клик — редактировать"
+                title={t("Double-click to edit")}
                 onClick={(e) => handleMarkdownClick(e, setError)}
                 onDoubleClick={() => setEditing(true)}
                 dangerouslySetInnerHTML={{ __html: html }}
               />
             ) : (
               <button className="panel-empty" onClick={() => setEditing(true)}>
-                Добавить описание…
-              </button>
+                {t("Add description…")}</button>
             )}
           </div>
         </aside>
       </div>
 
-      {/* Диалог вне фона панели: клик по его затемнению не должен закрывать панель. */}
-      {releaseConfirm && <ConfirmDialog title="Освободить задачу?" confirmLabel="Освободить"
+      {/* Keep the dialog outside the panel backdrop so clicking its overlay does not close the panel. */}
+      {releaseConfirm && <ConfirmDialog title={t("Release task?")} confirmLabel={t("Release")}
         onCancel={() => setReleaseConfirm(false)} onConfirm={() => { void onRelease().then(() => setReleaseConfirm(false), (e) => { setError(String(e)); setReleaseConfirm(false); }); }}>
-        <p>Текущая сессия больше не сможет отправлять отчёты. Уже записанные результаты сохранятся.</p>
+        <p>{t("The current session will no longer be able to submit reports. Existing reports will be kept.")}</p>
       </ConfirmDialog>}
       {confirmDelete && (
         <ConfirmDialog
-          title="Удалить задачу?"
-          confirmLabel="Удалить"
+          title={t("Delete task?")}
+          confirmLabel={t("Delete")}
           danger
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => {
             setConfirmDelete(false);
-            // Несохранённые правки удаляемой задачи не нужны.
+            // Discard unsaved edits for the task being deleted.
             pending.current = {};
             onDelete();
           }}
         >
-          <p>«{task.title}» вместе с описанием будет удалена без возможности восстановления.</p>
+          <p>{t("“{name}” and its description will be permanently deleted.", { name: task.title })}</p>
         </ConfirmDialog>
       )}
     </>

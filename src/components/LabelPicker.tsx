@@ -1,22 +1,24 @@
+import { useI18n } from "../i18n";
 import { useEffect, useRef, useState } from "react";
 import { LABEL_NAME_MAX, LabelPill, labelStyle } from "../labels";
 import type { Label } from "../types";
 
 interface Props {
-  /** Все метки проекта. */
+  /** All project labels. */
   labels: Label[];
-  /** id меток задачи. */
+  /** Task label IDs. */
   selected: string[];
   onToggle: (id: string) => void;
-  /** Создать метку с таким названием и сразу повесить на задачу. */
+  /** Create a label with this name and immediately assign it to the task. */
   onCreate: (name: string) => void;
 }
 
 /**
- * Метки задачи: плашки выбранных и выпадающий список с поиском.
- * Если введённого названия нет среди меток — предлагает создать новую.
+ * Task labels: selected label pills and a searchable dropdown.
+ * Offer to create a label if the entered name does not exist.
  */
 export default function LabelPicker({ labels, selected, onToggle, onCreate }: Props) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -30,12 +32,12 @@ export default function LabelPicker({ labels, selected, onToggle, onCreate }: Pr
   const matches = labels.filter((l) => l.name.toLowerCase().includes(q));
   const exact = labels.some((l) => l.name.toLowerCase() === q);
   const canCreate = q.length > 0 && !exact;
-  // Пункты списка: найденные метки, затем «Создать…».
+  // List items: matching labels, followed by the create option.
   const itemCount = matches.length + (canCreate ? 1 : 0);
 
   useEffect(() => setActive(0), [query]);
 
-  // Клик мимо списка закрывает его.
+  // Close the dropdown when clicking outside it.
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
@@ -53,9 +55,10 @@ export default function LabelPicker({ labels, selected, onToggle, onCreate }: Pr
   function choose(index: number) {
     if (index < matches.length) {
       onToggle(matches[index].id);
+      close();
     } else if (canCreate) {
       onCreate(query.trim());
-      setQuery("");
+      close();
     }
   }
 
@@ -66,7 +69,7 @@ export default function LabelPicker({ labels, selected, onToggle, onCreate }: Pr
           <LabelPill key={label.id} label={label} onRemove={() => onToggle(label.id)} />
         ))}
         <button className="label-add" onClick={() => (open ? close() : setOpen(true))}>
-          {selectedLabels.length ? "+" : "+ Добавить метку"}
+          {selectedLabels.length ? "+" : t("+ Add label")}
         </button>
       </div>
 
@@ -77,7 +80,7 @@ export default function LabelPicker({ labels, selected, onToggle, onCreate }: Pr
             className="label-search"
             value={query}
             maxLength={LABEL_NAME_MAX}
-            placeholder={labels.length ? "Найти или создать метку…" : "Название новой метки…"}
+            placeholder={labels.length ? t("Find or create a label…") : t("New label name…")}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return;
@@ -91,7 +94,7 @@ export default function LabelPicker({ labels, selected, onToggle, onCreate }: Pr
                 e.preventDefault();
                 if (itemCount > 0) choose(active);
               } else if (e.key === "Escape") {
-                // Закрываем только список, а не всю панель задачи.
+                // Close only the dropdown, leaving the task panel open.
                 e.stopPropagation();
                 close();
               }
@@ -117,10 +120,10 @@ export default function LabelPicker({ labels, selected, onToggle, onCreate }: Pr
                 onClick={() => choose(matches.length)}
               >
                 <span className="label-option-check">+</span>
-                Создать «{query.trim()}»
+                {t("Create “{name}”", { name: query.trim() })}
               </button>
             )}
-            {itemCount === 0 && <div className="label-empty muted">Начните вводить название</div>}
+            {itemCount === 0 && <div className="label-empty muted">{t("Start typing a name")}</div>}
           </div>
         </div>
       )}

@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n";
+import type { Message } from "../locales";
 import Icon from "./Icon";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
@@ -35,26 +37,26 @@ import ConfirmDialog from "./ConfirmDialog";
 import TaskArchive from "./TaskArchive";
 import TaskPanel, { type TaskPatch } from "./TaskPanel";
 
-const COLUMNS: { id: ColumnId; title: string }[] = [
+const COLUMNS: { id: ColumnId; title: Message }[] = [
   { id: "todo", title: "Not started" },
   { id: "inProgress", title: "In progress" },
   { id: "done", title: "Done" },
 ];
 
-/** Лимит длины названия задачи. Должен совпадать с MAX_TITLE_CHARS в src-tauri/src/board.rs. */
+/** Task title length limit. Must match MAX_TITLE_CHARS in src-tauri/src/board.rs. */
 const TASK_TITLE_MAX = 2000;
 
 const COLUMN_IDS =COLUMNS.map((c) => c.id) as string[];
 
-/** Короткий уникальный id. crypto.randomUUID есть не во всех контекстах WebView, поэтому свой. */
+/** Generate a short unique ID because crypto.randomUUID is unavailable in some WebView contexts. */
 function newId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 /**
- * Куда бросаем карточку. Сначала смотрим, что под курсором: карточка (вставить рядом с ней)
- * или пустое место колонки (в конец колонки). Только если курсор вне колонок — ближайшая цель.
- * Чистый closestCorners в длинных колонках промахивается: углы соседней колонки оказываются ближе.
+ * Choose a drop target under the pointer first: a card (insert next to it)
+ * or empty column space (append). Use the nearest target only when outside all columns.
+ * closestCorners alone misses in tall columns because adjacent column corners can be closer.
  */
 const collisionDetection: CollisionDetection = (args) => {
   const underPointer = pointerWithin(args);
@@ -65,13 +67,14 @@ const collisionDetection: CollisionDetection = (args) => {
   return closestCorners(args);
 };
 
-/** В какой колонке лежит задача (или сама колонка, если передан её id). */
+/** Find the task's column, or the column itself if given a column ID. */
 function findColumn(board: BoardData, id: string): ColumnId | null {
   if (COLUMN_IDS.includes(id)) return id as ColumnId;
   return COLUMNS.find((c) => board[c.id].some((t) => t.id === id))?.id ?? null;
 }
 
 export default function Board({ projectId, projectDir }: { projectId: string; projectDir: string }) {
+  const { t } = useI18n();
   const [board, setBoard] = useState<BoardData | null>(null);
   const [reloadConfirm, setReloadConfirm] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -86,29 +89,29 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   const [managingLabels, setManagingLabels] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedNotice, setArchivedNotice] = useState<string | null>(null);
-  // Высота закреплённой полосы фильтра: под ней прилипают заголовки колонок.
-  // Меряем по факту, потому что метки могут переноситься на несколько строк.
+  // Sticky filter bar height: column headers stick below it.
+  // Measure the actual height because labels can wrap onto multiple lines.
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
   useEffect(() => {
     if (!toolbar) return;
-    // Первый замер сразу, не дожидаясь ResizeObserver: он срабатывает только на отрисовке кадра.
+    // Measure immediately instead of waiting for ResizeObserver, which runs when a frame renders.
     setToolbarHeight(toolbar.offsetHeight);
     const observer = new ResizeObserver(() => setToolbarHeight(toolbar.offsetHeight));
     observer.observe(toolbar);
     return () => observer.disconnect();
   }, [toolbar]);
-  // Актуальная доска для правок, которые приходят с задержкой (автосохранение панели задачи):
-  // они должны применяться к свежему состоянию, а не к копии из замыкания.
+  // Keep the current board for delayed edits, such as task panel autosaves:
+  // apply them to the latest state rather than a stale closure snapshot.
   const boardRef = useRef<BoardData | null>(null);
   boardRef.current = board;
-  // Состояние доски до начала перетаскивания: для отмены и чтобы не сохранять, если ничего не поменялось.
+  // Keep the board state before dragging to allow cancellation and skip saves when nothing changes.
   const dragStart = useRef<BoardData | null>(null);
-  // Сохранения выполняются строго по очереди, чтобы старая версия не перезаписала новую.
+  // Serialize saves so an older version cannot overwrite a newer one.
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
 
   const sensors = useSensors(
-    // Небольшой порог, чтобы обычный клик и двойной клик не начинали перетаскивание.
+    // Use a small movement threshold so clicks and double-clicks do not start dragging.
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
@@ -174,7 +177,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     persist(next, previous, generation.current);
   }
 
-  /** Применяет изменение к самой свежей версии доски и сохраняет. */
+  /** Applies a change to the latest board state and saves it. */
   function change(fn: (b: BoardData) => BoardData) {
     const b = boardRef.current;
     if (b) update(fn(b));
@@ -186,13 +189,13 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   }
 
   if (error && !board) return <div className="error">{error}</div>;
-  if (!board) return <div className="muted">Загрузка…</div>;
+  if (!board) return <div className="muted">{t("Loading…")}</div>;
 
   const current = board;
   const labels = current.labels ?? [];
 
-  // Фильтр без удалённых меток. «Любая из выбранных»: задача видна, если есть хоть одна выбранная метка
-  // (или у неё нет меток, когда выбрано «без меток»).
+  // Exclude deleted labels from the filter. Match any selected label: show a task if it has at least one
+  // selected label, or no labels when the unlabeled filter is selected.
   const activeFilter = new Set([...filter].filter((k) => k === NO_LABEL || labels.some((l) => l.id === k)));
   const isVisible = (task: Task) => {
     if (task.archived) return false;
@@ -201,7 +204,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     return own.length === 0 ? activeFilter.has(NO_LABEL) : own.some((id) => activeFilter.has(id));
   };
 
-  // Сколько задач с каждой меткой и без меток — для фильтра и окна меток.
+  // Count tasks per label and unlabeled tasks for the filter and label dialog.
   const counts = new Map<string, number>();
   for (const task of COLUMNS.flatMap((c) => current[c.id])) {
     if (task.archived) continue;
@@ -210,8 +213,8 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     for (const id of own) counts.set(id, (counts.get(id) ?? 0) + 1);
   }
 
-  const archivedTasks = COLUMNS.flatMap((c) => current[c.id].filter((t) => t.archived).map((task) => ({ task, column: c.id, status: c.title })));
-  // Управление метками учитывает и архив: удаление метки затрагивает все задачи.
+  const archivedTasks = COLUMNS.flatMap((c) => current[c.id].filter((task) => task.archived).map((task) => ({ task, column: c.id, status: t(c.title) })));
+  // Include archived tasks in label management because deleting a label affects all tasks.
   const labelUsage = new Map<string, number>();
   for (const task of COLUMNS.flatMap((c) => current[c.id])) {
     for (const id of task.labels ?? []) labelUsage.set(id, (labelUsage.get(id) ?? 0) + 1);
@@ -229,7 +232,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   }
 
   function addTask(column: ColumnId, title: string) {
-    // При включённом фильтре новая задача получает выбранные метки, иначе она сразу исчезла бы с доски.
+    // Assign the active filter labels to new tasks so they do not immediately disappear from the board.
     const withLabels = [...activeFilter].filter((k) => k !== NO_LABEL);
     const task: Task = withLabels.length ? { id: newId(), title, labels: withLabels } : { id: newId(), title };
     change((b) => ({ ...b, [column]: [...b[column], task] }));
@@ -255,7 +258,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     change((b) => ({ ...b, labels: (b.labels ?? []).map((l) => (l.id === id ? { ...l, ...patch } : l)) }));
   }
 
-  /** Удаляет метку и снимает её со всех задач одной записью. */
+  /** Deletes a label and removes it from all tasks in a single write. */
   function deleteLabel(id: string) {
     change((b) => {
       const strip = (tasks: Task[]) =>
@@ -274,12 +277,12 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   function updateTask(id: string, patch: TaskPatch) {
     change((b) => {
       const column = findColumn(b, id);
-      if (!column) return b; // Задачу уже удалили.
+      if (!column) return b; // The task has already been deleted.
       return { ...b, [column]: b[column].map((t) => (t.id === id ? { ...t, ...patch } : t)) };
     });
   }
 
-  /** Переносит задачу в конец другой колонки. */
+  /** Moves a task to the end of another column. */
   function moveTask(id: string, to: ColumnId) {
     change((b) => {
       const from = findColumn(b, id);
@@ -302,7 +305,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     dragStart.current = current;
   }
 
-  // Переход в другую колонку применяем сразу, чтобы карточка «переезжала» под курсором.
+  // Apply column changes immediately so the card follows the pointer.
   function onDragOver({ active, over }: DragOverEvent) {
     if (!over) return;
     setBoard((b) => {
@@ -319,7 +322,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     });
   }
 
-  // Порядок внутри колонки меняем по отпусканию, затем сохраняем итог один раз.
+  // Reorder within a column on drop, then save the result once.
   function onDragEnd({ active, over }: DragEndEvent) {
     setActiveId(null);
     const before = dragStart.current;
@@ -361,10 +364,10 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
           {saveFailed.current && <div className="board-conflict-actions">
             <button className="btn small-btn" disabled={pendingSaves.current > 0} onClick={() => {
               if (boardRef.current && failedBase.current) persist(boardRef.current, failedBase.current, generation.current);
-            }}>Повторить сохранение</button>
-            <button className="btn small-btn" onClick={() => setReloadConfirm(true)}>Загрузить актуальную доску</button>
+            }}>{t("Retry save")}</button>
+            <button className="btn small-btn" onClick={() => setReloadConfirm(true)}>{t("Load current board")}</button>
           </div>}
-          <button className="icon-btn" title="Закрыть" onClick={() => { if (!saveFailed.current) setError(null); }}>
+          <button className="icon-btn" title={t("Close")} onClick={() => { if (!saveFailed.current) setError(null); }}>
                 <Icon name="close" />
               </button>
         </div>
@@ -383,8 +386,8 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
           onClear={() => changeFilter(new Set())}
           onManage={() => setManagingLabels(true)}
         />
-        <button className="btn archive-button" title="Открыть архив" onClick={() => setArchiveOpen(true)}>
-          <Icon name="archive" /> Архив <span className="archive-count">{archivedTasks.length}</span>
+        <button className="btn archive-button" title={t("Open archive")} onClick={() => setArchiveOpen(true)}>
+          <Icon name="archive" /> {t("Archive")}<span className="archive-count">{archivedTasks.length}</span>
         </button>
       </div>
       <DndContext
@@ -400,7 +403,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
             <Column
               key={column.id}
               id={column.id}
-              title={column.title}
+              title={t(column.title)}
               taskPrefix={current.taskPrefix}
               tasks={current[column.id].filter(isVisible)}
               total={current[column.id].filter((t) => !t.archived).length}
@@ -421,14 +424,14 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
           task={openTask}
           taskCode={taskCode(current.taskPrefix, openTask.number)}
           column={openColumn}
-          columns={COLUMNS}
+          columns={COLUMNS.map((column) => ({ ...column, title: t(column.title) }))}
           projectDir={projectDir}
           titleMaxLength={TASK_TITLE_MAX}
           labels={labels}
           participants={participants}
           onRelease={async () => {
             await saveQueue.current;
-            if (saveFailed.current) throw new Error("Сначала разрешите ошибку сохранения доски");
+            if (saveFailed.current) throw new Error("Resolve the board save error first");
             pendingSaves.current += 1;
             generation.current += 1;
             try {
@@ -448,17 +451,17 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
         />
       )}
 
-      {reloadConfirm && <ConfirmDialog title="Загрузить актуальную доску?" confirmLabel="Загрузить" danger
+      {reloadConfirm && <ConfirmDialog title={t("Load current board?")} confirmLabel={t("Load")} danger
         onCancel={() => setReloadConfirm(false)} onConfirm={() => {
           setReloadConfirm(false);
-          if (openTaskId) { setError("Сначала закройте открытую задачу и скопируйте нужные правки"); return; }
+          if (openTaskId) { setError(t("Close the open task and copy any edits you need to keep first")); return; }
           const version = ++generation.current;
           void saveQueue.current.then(() => getBoard(projectId)).then((fresh) => {
             if (generation.current !== version) return;
             failedBase.current = null; saveFailed.current = false; generation.current += 1;
             boardRef.current = fresh; setBoard(fresh); setError(null);
           }, (e) => setError(String(e)));
-        }}><p>Несохранённые изменения в этом окне будут заменены данными с диска. Сначала скопируйте нужные правки.</p></ConfirmDialog>}
+        }}><p>{t("Unsaved edits in this window will be replaced with data from disk. Copy any edits you want to keep first.")}</p></ConfirmDialog>}
       {archiveOpen && (
         <TaskArchive tasks={archivedTasks} prefix={current.taskPrefix} labels={labels}
           onRestore={restoreTask}
@@ -467,9 +470,9 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
       )}
       {archivedNotice && (
         <div className="archive-toast" role="status">
-          <span>Задача перемещена в архив</span>
-          <button className="link-btn" onClick={() => restoreTask(archivedNotice)}>Отменить</button>
-          <button className="icon-btn" aria-label="Закрыть уведомление" onClick={() => setArchivedNotice(null)}><Icon name="close" /></button>
+          <span>{t("Task moved to archive")}</span>
+          <button className="link-btn" onClick={() => restoreTask(archivedNotice)}>{t("Undo")}</button>
+          <button className="icon-btn" aria-label={t("Dismiss notification")} onClick={() => setArchivedNotice(null)}><Icon name="close" /></button>
         </div>
       )}
       {managingLabels && (
@@ -486,7 +489,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   );
 }
 
-/** Фильтр по меткам запоминается для каждого проекта отдельно. */
+/** Persist the label filter separately for each project. */
 function filterKey(projectId: string) {
   return `label-filter:${projectId}`;
 }
@@ -504,7 +507,7 @@ function saveFilter(projectId: string, filter: Set<string>) {
   try {
     localStorage.setItem(filterKey(projectId), JSON.stringify([...filter]));
   } catch {
-    // Не запомним фильтр — не страшно.
+    // Failure to persist the filter is nonfatal.
   }
 }
 
@@ -512,9 +515,9 @@ interface ColumnProps {
   id: ColumnId;
   title: string;
   taskPrefix: string;
-  /** Видимые задачи (с учётом фильтра). */
+  /** Visible tasks after filtering. */
   tasks: Task[];
-  /** Всего задач в колонке. */
+  /** Total tasks in the column. */
   total: number;
   labels: Label[];
   participants: Participant[];
@@ -524,22 +527,23 @@ interface ColumnProps {
 }
 
 function Column({ id, title, taskPrefix, tasks, total, labels, participants, onAdd, onOpen, onDelete }: ColumnProps) {
+  const { t } = useI18n();
   const { setNodeRef, isOver } = useDroppable({ id });
   const [adding, setAdding] = useState(false);
-  // Новый key пересоздаёт поле ввода после Enter, чтобы сразу вводить следующую задачу.
+  // A new key recreates the input after Enter, ready for the next task.
   const [inputKey, setInputKey] = useState(0);
 
   return (
-    // Зона сброса — вся колонка во всю высоту доски, а не только список карточек:
-    // иначе в короткую колонку нельзя бросить задачу, если доска прокручена вниз.
+    // Use the full column height as the drop zone, rather than just the card list:
+    // otherwise, shorter columns cannot accept drops when the board is scrolled down.
     <section ref={setNodeRef} className={`column column-${id} ${isOver ? "drop-target" : ""}`}>
       <header className="column-header">
         <span className="column-pill">
           <span className="column-dot" />
           {title}
         </span>
-        <span className="column-count" title={tasks.length < total ? "Часть задач скрыта фильтром" : undefined}>
-          {tasks.length < total ? `${tasks.length} из ${total}` : total}
+        <span className="column-count" title={tasks.length < total ? t("Some tasks are hidden by the filter") : undefined}>
+          {tasks.length < total ? t("{visible} of {total}", { visible: tasks.length, total }) : total}
         </span>
       </header>
 
@@ -565,7 +569,7 @@ function Column({ id, title, taskPrefix, tasks, total, labels, participants, onA
             key={inputKey}
             multiline
             maxLength={TASK_TITLE_MAX}
-            placeholder="Название задачи"
+            placeholder={t("Task title")}
             onCommit={(value, via) => {
               onAdd(value);
               if (via === "enter") setInputKey((k) => k + 1);
@@ -576,8 +580,7 @@ function Column({ id, title, taskPrefix, tasks, total, labels, participants, onA
         </div>
       ) : (
         <button className="add-task" onClick={() => setAdding(true)}>
-          + Добавить задачу
-        </button>
+          {t("+ Add task")}</button>
       )}
     </section>
   );
@@ -593,11 +596,12 @@ interface TaskCardProps {
 }
 
 function TaskCard({ task, code, labels, participants, onOpen, onDelete }: TaskCardProps) {
+  const { t } = useI18n();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
   const style = { transform: CSS.Translate.toString(transform), transition };
   const hasDescription = !!task.description?.trim();
-  // Метки в порядке, заданном в проекте.
+  // Keep labels in project order.
   const taskLabels = labels.filter((l) => task.labels?.includes(l.id));
 
   return (
@@ -605,7 +609,7 @@ function TaskCard({ task, code, labels, participants, onOpen, onDelete }: TaskCa
       ref={setNodeRef}
       style={style}
       className={`task-card ${isDragging ? "dragging" : ""}`}
-      // Перетаскивание стартует только после сдвига на 5px, поэтому обычный клик открывает задачу.
+      // Dragging starts after moving 5px, so a regular click opens the task.
       onClick={onOpen}
       {...attributes}
       {...listeners}
@@ -614,13 +618,13 @@ function TaskCard({ task, code, labels, participants, onOpen, onDelete }: TaskCa
         <span className="task-code">{code}</span>
         {(task.assigneeId || task.readyForReview || task.question) && <div className="task-agent-badges">
           {task.assigneeId && <span>{participants.find((p) => p.id === task.assigneeId)?.name ?? task.assigneeId}</span>}
-          {task.readyForReview && <span className="review-badge">Готово к проверке</span>}
-          {task.question && <span className="question-badge">Нужен ответ</span>}
+          {task.readyForReview && <span className="review-badge">{t("Ready for review")}</span>}
+          {task.question && <span className="question-badge">{t("Needs an answer")}</span>}
         </div>}
         <span className="task-title">
           {task.title}
           {hasDescription && (
-            <span className="task-has-desc" title="Есть описание">
+            <span className="task-has-desc" title={t("Has a description")}>
               ≡
             </span>
           )}
@@ -636,8 +640,8 @@ function TaskCard({ task, code, labels, participants, onOpen, onDelete }: TaskCa
       <button
         className="icon-btn task-delete"
         disabled={!!task.claim}
-        title={task.claim ? "Сначала освободите задачу" : "Удалить задачу"}
-        // Нажатия на кнопке не должны начинать перетаскивание или открывать задачу.
+        title={task.claim ? t("Release the task first") : t("Delete task")}
+        // Button clicks must not start dragging or open the task.
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         onClick={(e) => {

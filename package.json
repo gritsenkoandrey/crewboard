@@ -1,5 +1,5 @@
 {
-  "name": "task-track",
+  "name": "crewboard",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -8,9 +8,10 @@
     "build": "npm run icons && tsc && vite build",
     "icons": "tauri icon app-icon.png",
     "preview": "vite preview",
+    "test:i18n": "node --test scripts/i18n.test.mjs",
     "tauri": "tauri",
-    "agent": "node scripts/tasktrack.mjs",
-    "agent:build": "cargo build --manifest-path src-tauri/Cargo.toml --bin tasktrack"
+    "agent": "node scripts/crewboard-cli.mjs",
+    "agent:build": "cargo build --manifest-path src-tauri/Cargo.toml --bin crewboard-cli"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",

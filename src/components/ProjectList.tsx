@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n";
 import Icon from "./Icon";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Project } from "../types";
@@ -15,8 +16,6 @@ interface Props {
   onDelete: (id: string) => Promise<void>;
 }
 
-const dateFormat = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", year: "numeric" });
-
 export default function ProjectList({
   projects,
   onOpen,
@@ -26,6 +25,8 @@ export default function ProjectList({
   onRemoveCover,
   onDelete,
 }: Props) {
+  const { t, locale } = useI18n();
+  const dateFormat = new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: "numeric" });
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -36,20 +37,19 @@ export default function ProjectList({
       {creating ? (
         <div className="project-card new-card editing">
           <InlineInput
-            placeholder="Название проекта"
+            placeholder={t("Project name")}
             onCommit={(name) => {
               setCreating(false);
               void onCreate(name);
             }}
             onCancel={() => setCreating(false)}
           />
-          <span className="muted hint">Enter — создать, Esc — отмена</span>
+          <span className="muted hint">{t("Enter to create, Esc to cancel")}</span>
         </div>
       ) : (
         <button className="project-card new-card" onClick={() => setCreating(true)}>
           <span className="plus">+</span>
-          Новый проект
-        </button>
+          {t("New project")}</button>
       )}
 
       {projects.map((project) => (
@@ -81,7 +81,7 @@ export default function ProjectList({
           </div>
           <button
             className="icon-btn card-menu-btn"
-            title="Действия"
+            title={t("Actions")}
             onClick={(e) => {
               e.stopPropagation();
               setMenuId(menuId === project.id ? null : project.id);
@@ -97,15 +97,14 @@ export default function ProjectList({
                   setRenamingId(project.id);
                 }}
               >
-                Переименовать
-              </button>
+                {t("Rename")}</button>
               <button
                 onClick={() => {
                   setMenuId(null);
                   void onChangeCover(project.id);
                 }}
               >
-                {project.coverPath ? "Сменить обложку" : "Добавить обложку"}
+                {project.coverPath ? t("Change cover") : t("Add cover")}
               </button>
               {project.coverPath && (
                 <button
@@ -114,8 +113,7 @@ export default function ProjectList({
                     void onRemoveCover(project.id);
                   }}
                 >
-                  Убрать обложку
-                </button>
+                  {t("Remove cover")}</button>
               )}
               <button
                 className="danger-text"
@@ -124,8 +122,7 @@ export default function ProjectList({
                   setDeleting(project);
                 }}
               >
-                Удалить
-              </button>
+                {t("Delete")}</button>
             </Menu>
           )}
         </div>
@@ -133,8 +130,8 @@ export default function ProjectList({
 
       {deleting && (
         <ConfirmDialog
-          title="Удалить проект?"
-          confirmLabel="Удалить"
+          title={t("Delete project?")}
+          confirmLabel={t("Delete")}
           danger
           onCancel={() => setDeleting(null)}
           onConfirm={() => {
@@ -144,8 +141,7 @@ export default function ProjectList({
           }}
         >
           <p>
-            Проект «{deleting.name}» со всеми задачами и документацией будет перемещён в корзину Windows. Оттуда его
-            можно восстановить.
+            {t("Project “{name}”, including all tasks and documents, will be moved to the Windows Recycle Bin. You can restore it from there.", { name: deleting.name })}
           </p>
         </ConfirmDialog>
       )}
@@ -153,7 +149,7 @@ export default function ProjectList({
   );
 }
 
-/** Выпадающее меню карточки. Закрывается по клику вне него и по Escape. */
+/** Card dropdown menu. Closes on outside clicks and Escape. */
 function Menu({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
 

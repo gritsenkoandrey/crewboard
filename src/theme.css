@@ -54,6 +54,25 @@ button { transition: background-color 120ms ease, color 120ms ease, border-color
 button:disabled { opacity: 0.45; cursor: default; }
 .topbar { background: var(--bg-panel); min-height: 48px; }
 .logo { font-size: 15px; letter-spacing: -0.025em; }
+/* Header actions share the same compact SVG icon style as the rest of the app. */
+.topbar .logo { flex-shrink: 0; }
+.topbar .data-dir { font-size: 12px; }
+.topbar-actions { display: flex; align-items: center; flex-shrink: 0; gap: 4px; padding-left: 12px; border-left: 1px solid var(--border); }
+.topbar-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 32px; padding: 6px 9px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer; }
+.topbar-action > svg { flex-shrink: 0; }
+.topbar-action:hover { color: var(--text); background: var(--bg); border-color: var(--border); }
+.topbar-action[aria-expanded="true"] { color: var(--accent-text); background: var(--active-bg); }
+.language-switcher { display: inline-flex; flex-shrink: 0; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 5px; }
+.language-switcher button { padding: 3px 6px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; }
+.language-switcher button:hover { color: var(--text); background: var(--hover); }
+.language-switcher button[aria-pressed="true"] { background: var(--active-bg); color: var(--accent-text); }
+.setup-language { display: flex; justify-content: center; margin-bottom: 20px; }
+.project-deletion-status { padding: 8px 20px; background: var(--active-bg); color: var(--accent-text); font-size: 12px; }
+@media (max-width: 640px) {
+  .topbar-actions { gap: 2px; padding-left: 8px; }
+  .topbar-action { width: 32px; padding: 6px; }
+  .topbar-action > span { display: none; }
+}
 .btn, .icon-btn, .inline-input, .menu button { border-radius: 4px; }
 .icon-btn { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .project-card { border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.025); }

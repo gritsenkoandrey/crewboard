@@ -11,24 +11,24 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
-/// Файл настроек приложения в %APPDATA%\com.local.tasktrack\.
+/// Application settings file in %APPDATA%\com.local.tasktrack\.
 const CONFIG_FILE: &str = "config.json";
 
-/// Настройки приложения. Хранятся отдельно от данных: при переустановке Windows
-/// теряются только они, а папку с проектами достаточно выбрать заново.
+/// Application settings are stored separately from data: after reinstalling Windows,
+/// only settings are lost; selecting the existing project folder restores access to the data.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Config {
     data_dir: Option<PathBuf>,
 }
 
-/// Состояние папки данных для интерфейса.
+/// Data folder state for the UI.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DataDirInfo {
-    /// Путь из настроек, если папка уже выбиралась.
+    /// Path from settings, if a folder was previously selected.
     path: Option<String>,
-    /// Папка выбрана, но сейчас недоступна (удалена, отключён диск).
+    /// A folder was selected but is unavailable (deleted or on a disconnected drive).
     missing: bool,
 }
 
@@ -38,28 +38,28 @@ fn config_path(app: &AppHandle) -> CmdResult<PathBuf> {
     let dir = app
         .path()
         .app_config_dir()
-        .map_err(|e| format!("Не удалось найти папку настроек: {e}"))?;
+        .map_err(|e| format!("Failed to locate the settings folder: {e}"))?;
     Ok(dir.join(CONFIG_FILE))
 }
 
 fn read_config(app: &AppHandle) -> CmdResult<Config> {
     let path = config_path(app)?;
     match fs::read_to_string(&path) {
-        // Повреждённый файл настроек не должен ломать запуск: просто попросим выбрать папку заново.
+        // A corrupt settings file must not prevent startup; ask the user to select a folder again.
         Ok(text) => Ok(serde_json::from_str(&text).unwrap_or_default()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
-        Err(e) => Err(format!("Не удалось прочитать настройки: {e}")),
+        Err(e) => Err(format!("Failed to read settings: {e}")),
     }
 }
 
-/// Пишет файл через временный, чтобы сбой посреди записи не оставил его обрезанным.
+/// Writes through a temporary file so an interrupted write cannot leave a truncated file.
 pub(crate) fn write_atomic(path: &Path, contents: &str) -> CmdResult<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Не удалось создать папку {}: {e}", parent.display()))?;
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create folder {}: {e}", parent.display()))?;
     }
     let tmp = path.with_extension("tmp");
-    fs::write(&tmp, contents).map_err(|e| format!("Не удалось записать {}: {e}", tmp.display()))?;
-    fs::rename(&tmp, path).map_err(|e| format!("Не удалось сохранить {}: {e}", path.display()))
+    fs::write(&tmp, contents).map_err(|e| format!("Failed to write {}: {e}", tmp.display()))?;
+    fs::rename(&tmp, path).map_err(|e| format!("Failed to save {}: {e}", path.display()))
 }
 
 fn write_config(app: &AppHandle, config: &Config) -> CmdResult<()> {
@@ -67,12 +67,12 @@ fn write_config(app: &AppHandle, config: &Config) -> CmdResult<()> {
     write_atomic(&config_path(app)?, &text)
 }
 
-/// Текущая папка данных. Ошибка, если она не выбрана или недоступна.
+/// Current data folder. Returns an error if it is not selected or is unavailable.
 pub(crate) fn data_dir(app: &AppHandle) -> CmdResult<PathBuf> {
     match read_config(app)?.data_dir {
         Some(dir) if dir.is_dir() => Ok(dir),
-        Some(dir) => Err(format!("Папка с данными недоступна: {}", dir.display())),
-        None => Err("Папка с данными не выбрана".into()),
+        Some(dir) => Err(format!("Data folder is unavailable: {}", dir.display())),
+        None => Err("Data folder is not selected".into()),
     }
 }
 
@@ -88,16 +88,16 @@ fn get_data_dir(app: AppHandle) -> CmdResult<DataDirInfo> {
     })
 }
 
-/// Запоминает папку данных и готовит в ней структуру. Существующие данные не трогает,
-/// поэтому после переустановки можно указать старую папку и всё подхватится.
+/// Stores the data folder and prepares its structure without modifying existing data,
+/// so selecting the old folder after reinstalling restores access to all data.
 #[tauri::command]
 fn set_data_dir(app: AppHandle, path: String) -> CmdResult<DataDirInfo> {
     let dir = PathBuf::from(&path);
     if !dir.is_dir() {
-        return Err(format!("Папка не найдена: {path}"));
+        return Err(format!("Folder not found: {path}"));
     }
     let projects = projects::projects_root(&dir);
-    fs::create_dir_all(&projects).map_err(|e| format!("Не удалось создать {}: {e}", projects.display()))?;
+    fs::create_dir_all(&projects).map_err(|e| format!("Failed to create {}: {e}", projects.display()))?;
     write_config(&app, &Config { data_dir: Some(dir) })?;
     Ok(DataDirInfo { path: Some(path), missing: false })
 }
@@ -105,8 +105,8 @@ fn set_data_dir(app: AppHandle, path: String) -> CmdResult<DataDirInfo> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // Второй запуск приложения просто разворачивает уже открытое окно,
-        // чтобы два экземпляра не писали в одни и те же файлы.
+        // A second application launch brings the existing window to the foreground,
+        // preventing two instances from writing to the same files.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -114,7 +114,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        // Ссылки из документации открываются в системном браузере, а не внутри окна.
+        // Open documentation links in the system browser rather than inside the window.
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             agents::get_participants,
