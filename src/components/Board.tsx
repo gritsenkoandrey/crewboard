@@ -32,6 +32,7 @@ import { LabelPill, nextLabelColor } from "../labels";
 import type { Board as BoardData, ColumnId, Label, Task, Participant } from "../types";
 import InlineInput from "./InlineInput";
 import LabelFilter, { NO_LABEL } from "./LabelFilter";
+import AssigneeFilter, { NO_ASSIGNEE } from "./AssigneeFilter";
 import LabelManager from "./LabelManager";
 import ConfirmDialog from "./ConfirmDialog";
 import TaskArchive from "./TaskArchive";
@@ -86,6 +87,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   const [activeId, setActiveId] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Set<string>>(() => loadFilter(projectId));
+  const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(() => loadFilter(projectId, "assignee"));
   const [managingLabels, setManagingLabels] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedNotice, setArchivedNotice] = useState<string | null>(null);
@@ -187,6 +189,10 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     setFilter(next);
     saveFilter(projectId, next);
   }
+  function changeAssigneeFilter(next: Set<string>) {
+    setAssigneeFilter(next);
+    saveFilter(projectId, next, "assignee");
+  }
 
   if (error && !board) return <div className="error">{error}</div>;
   if (!board) return <div className="muted">{t("Loading…")}</div>;
@@ -197,20 +203,37 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   // Exclude deleted labels from the filter. Match any selected label: show a task if it has at least one
   // selected label, or no labels when the unlabeled filter is selected.
   const activeFilter = new Set([...filter].filter((k) => k === NO_LABEL || labels.some((l) => l.id === k)));
-  const isVisible = (task: Task) => {
-    if (task.archived) return false;
+  const matchesLabels = (task: Task) => {
     if (activeFilter.size === 0) return true;
     const own = task.labels ?? [];
     return own.length === 0 ? activeFilter.has(NO_LABEL) : own.some((id) => activeFilter.has(id));
   };
 
+  // Preserve access to tasks whose assignee is absent from the shared participant list.
+  const assignees: Pick<Participant, "id" | "name">[] = [...participants];
+  const assigneeIds = new Set(assignees.map((participant) => participant.id));
+  for (const task of COLUMNS.flatMap((column) => current[column.id])) {
+    if (task.assigneeId && !assigneeIds.has(task.assigneeId)) {
+      assigneeIds.add(task.assigneeId);
+      assignees.push({ id: task.assigneeId, name: task.assigneeId });
+    }
+  }
+  const activeAssignees = new Set([...assigneeFilter].filter((id) => id === NO_ASSIGNEE || assigneeIds.has(id)));
+  const isVisible = (task: Task) => !task.archived && matchesLabels(task)
+    && (activeAssignees.size === 0 || activeAssignees.has(task.assigneeId || NO_ASSIGNEE));
+
   // Count tasks per label and unlabeled tasks for the filter and label dialog.
   const counts = new Map<string, number>();
+  const assigneeCounts = new Map<string, number>();
   for (const task of COLUMNS.flatMap((c) => current[c.id])) {
     if (task.archived) continue;
     const own = task.labels ?? [];
     if (own.length === 0) counts.set(NO_LABEL, (counts.get(NO_LABEL) ?? 0) + 1);
     for (const id of own) counts.set(id, (counts.get(id) ?? 0) + 1);
+    if (matchesLabels(task)) {
+      const id = task.assigneeId || NO_ASSIGNEE;
+      assigneeCounts.set(id, (assigneeCounts.get(id) ?? 0) + 1);
+    }
   }
 
   const archivedTasks = COLUMNS.flatMap((c) => current[c.id].filter((task) => task.archived).map((task) => ({ task, column: c.id, status: t(c.title) })));
@@ -373,22 +396,34 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
         </div>
       )}
       <div ref={setToolbar} className="board-toolbar">
-        <LabelFilter
-          labels={labels}
-          counts={counts}
-          selected={activeFilter}
-          onToggle={(key) => {
-            const next = new Set(activeFilter);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            changeFilter(next);
-          }}
-          onClear={() => changeFilter(new Set())}
-          onManage={() => setManagingLabels(true)}
-        />
+        <div className="board-filters">
+          <LabelFilter
+            labels={labels}
+            counts={counts}
+            selected={activeFilter}
+            onToggle={(key) => {
+              const next = new Set(activeFilter);
+              if (next.has(key)) next.delete(key);
+              else next.add(key);
+              changeFilter(next);
+            }}
+            onClear={() => changeFilter(new Set())}
+            onManage={() => setManagingLabels(true)}
+          />
+          <AssigneeFilter participants={assignees} counts={assigneeCounts} selected={activeAssignees}
+            onToggle={(id) => {
+              const next = new Set(activeAssignees);
+              if (next.has(id)) next.delete(id); else next.add(id);
+              changeAssigneeFilter(next);
+            }} onClear={() => changeAssigneeFilter(new Set())} />
+        </div>
+        <div className="board-toolbar-actions">
+        {(activeFilter.size > 0 || activeAssignees.size > 0) && <button type="button" className="board-filter-reset"
+          onClick={() => { changeFilter(new Set()); changeAssigneeFilter(new Set()); }}><Icon name="close" />{t("Reset filters")}</button>}
         <button className="btn archive-button" title={t("Open archive")} onClick={() => setArchiveOpen(true)}>
           <Icon name="archive" /> {t("Archive")}<span className="archive-count">{archivedTasks.length}</span>
         </button>
+        </div>
       </div>
       <DndContext
         sensors={sensors}
@@ -489,23 +524,23 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   );
 }
 
-/** Persist the label filter separately for each project. */
-function filterKey(projectId: string) {
-  return `label-filter:${projectId}`;
+/** Persist each filter separately for each project; retain existing label preferences. */
+function filterKey(projectId: string, kind: "label" | "assignee") {
+  return `${kind}-filter:${projectId}`;
 }
 
-function loadFilter(projectId: string): Set<string> {
+function loadFilter(projectId: string, kind: "label" | "assignee" = "label"): Set<string> {
   try {
-    const saved = JSON.parse(localStorage.getItem(filterKey(projectId)) ?? "[]");
+    const saved = JSON.parse(localStorage.getItem(filterKey(projectId, kind)) ?? "[]");
     return new Set(Array.isArray(saved) ? saved.filter((k) => typeof k === "string") : []);
   } catch {
     return new Set();
   }
 }
 
-function saveFilter(projectId: string, filter: Set<string>) {
+function saveFilter(projectId: string, filter: Set<string>, kind: "label" | "assignee" = "label") {
   try {
-    localStorage.setItem(filterKey(projectId), JSON.stringify([...filter]));
+    localStorage.setItem(filterKey(projectId, kind), JSON.stringify([...filter]));
   } catch {
     // Failure to persist the filter is nonfatal.
   }

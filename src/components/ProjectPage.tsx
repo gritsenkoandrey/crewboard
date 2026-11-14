@@ -1,6 +1,9 @@
 import { useI18n } from "../i18n";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type Modifier } from "@dnd-kit/core";
+import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { Project } from "../types";
 import { getSourceDir, setSourceDir, pickFolder, documentRevisions, linkDocument, unlinkDocument, pickMarkdown, listDocuments, createDocument, renameDocument, reorderDocuments, deleteDocument, type ProjectDocument } from "../api";
 import Board from "./Board";
@@ -35,6 +38,20 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
   const [error, setError] = useState<string | null>(null);
   const editor = useRef<DocsHandle>(null);
   const working = useRef(false);
+  const documentTabs = useRef<HTMLDivElement>(null);
+  const horizontalTabDrag = useCallback<Modifier>(({ transform, activeNodeRect }) => {
+    const bounds = documentTabs.current?.getBoundingClientRect();
+    if (!bounds || !activeNodeRect) return { ...transform, x: 0, y: 0 };
+    return {
+      ...transform,
+      x: Math.min(bounds.right - activeNodeRect.right, Math.max(bounds.left - activeNodeRect.left, transform.x)),
+      y: 0,
+    };
+  }, []);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const storageKey = "project-tab:" + project.dir;
   useEffect(() => {
     let cancelled = false;
@@ -103,8 +120,8 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
     return !editor.current || await editor.current.flush();
   }
   function selectTab(id: string) {
-    if (id === tab) return;
     setMenu(null);
+    if (id === tab) return;
     void run(async () => { if (await saveBeforeLeaving()) remember(id); });
   }
   async function leave() {
@@ -123,15 +140,23 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
       setNameDialog(null);
     });
   }
-  function moveDocument(document: ProjectDocument, direction: number) {
-    setMenu(null);
+  function reorderTabs(from: number, to: number) {
+    if (from < 0 || to < 0 || from >= documents.length || to >= documents.length || from === to) return;
     void run(async () => {
-      const next = [...documents];
-      const from = next.findIndex((d) => d.id === document.id), to = from + direction;
-      if (from < 0 || to < 0 || to >= next.length) return;
-      [next[from], next[to]] = [next[to], next[from]];
-      setDocuments(await reorderDocuments(project.id, next.map((d) => d.id)));
+      const previous = documents;
+      const next = arrayMove(previous, from, to);
+      setDocuments(next);
+      try {
+        setDocuments(await reorderDocuments(project.id, next.map((d) => d.id)));
+      } catch (e) {
+        setDocuments(previous);
+        throw e;
+      }
     });
+  }
+  function onTabDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return;
+    reorderTabs(documents.findIndex((d) => d.id === active.id), documents.findIndex((d) => d.id === over.id));
   }
   const activeDocument = documents.find((d) => d.id === tab);
 
@@ -172,17 +197,20 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
             })}>{sourceDir ? t("Change") : t("Choose folder")}</button>
           </div>
           <div className="document-tabs-row">
-            <nav className="tabs document-tabs" aria-label={t("Project sections")}>
-              <button className={tab === "board" ? "active" : ""} onClick={() => selectTab("board")} disabled={busy}>{t("Board")}</button>
-              {documents.map((doc) => (
-                <div key={doc.id} className={"document-tab " + (tab === doc.id ? "active" : "")}>
-                  <button className={tab === doc.id ? "active document-tab-name" : "document-tab-name"}
-                    title={doc.name + " · " + (doc.externalPath ?? doc.file)} onClick={() => selectTab(doc.id)} disabled={busy}>{doc.externalPath && <Icon name="link" />}<span>{doc.name}</span>{changed.has(doc.id) && <span className="document-change-dot" title={t("File changed")} aria-label={t("File changed")} />}</button>
-                  <button className="document-tab-menu" title={t("Actions: {name}", { name: doc.name })} aria-label={t("Document actions: {name}", { name: doc.name })}
-                    aria-expanded={menu?.id === doc.id} onClick={() => setMenu(menu?.id === doc.id ? null : doc)} disabled={busy}><Icon name="more" /></button>
-                </div>
-              ))}
-            </nav>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} modifiers={[horizontalTabDrag]}
+              onDragStart={() => { setMenu(null); setAddMenu(false); }} onDragEnd={onTabDragEnd}>
+              <nav className="tabs document-tabs" aria-label={t("Project sections")}>
+                <button className={tab === "board" ? "active" : ""} onClick={() => selectTab("board")} disabled={busy}>{t("Board")}</button>
+                <SortableContext items={documents.map((doc) => doc.id)} strategy={horizontalListSortingStrategy}>
+                  <div ref={documentTabs} className="document-tab-list">
+                    {documents.map((doc) => (
+                      <DocumentTab key={doc.id} document={doc} active={tab === doc.id} changed={changed.has(doc.id)} busy={busy}
+                        menuOpen={menu?.id === doc.id} onSelect={() => selectTab(doc.id)} onMenu={() => { setAddMenu(false); setMenu(menu?.id === doc.id ? null : doc); }} />
+                    ))}
+                  </div>
+                </SortableContext>
+              </nav>
+            </DndContext>
             <button className="icon-btn document-add" title={t("Add document")} aria-label={t("Add document")} aria-expanded={addMenu}
               disabled={!loaded || busy} onClick={() => { setMenu(null); setAddMenu(!addMenu); }}><Icon name="plus" /></button>
           </div>
@@ -196,14 +224,12 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
       {menu && (
         <div className="document-actions" onKeyDown={(e) => { if (e.key === "Escape") setMenu(null); }}>
           <span className="muted document-actions-name">{menu.name}</span>
-          <button className="btn small-btn" onClick={() => { setNameDialog({ document: menu }); setMenu(null); }}>{t("Rename")}</button>
-          <button className="icon-btn" title={t("Move left")} aria-label={t("Move left")} disabled={documents[0]?.id === menu.id} onClick={() => moveDocument(menu, -1)}><Icon name="back" /></button>
-          <button className="icon-btn" title={t("Move right")} aria-label={t("Move right")} disabled={documents[documents.length - 1]?.id === menu.id} onClick={() => moveDocument(menu, 1)}><Icon name="back" style={{ transform: "rotate(180deg)" }} /></button>
+          <button className="document-action" onClick={() => { setNameDialog({ document: menu }); setMenu(null); }}><Icon name="edit" />{t("Rename")}</button>
           {menu.externalPath && <>
-            <button className="btn small-btn" onClick={() => void run(async () => { await revealItemInDir(menu.externalPath!); })}>{t("Show in folder")}</button>
-            <button className="btn small-btn" onClick={() => connect(menu)}>{t("Choose another file")}</button>
+            <button className="document-action" onClick={() => void run(async () => { await revealItemInDir(menu.externalPath!); })}><Icon name="folder" />{t("Show in folder")}</button>
+            <button className="document-action" onClick={() => connect(menu)}><Icon name="link" />{t("Choose another file")}</button>
           </>}
-          <button className="icon-btn danger-hover" title={menu.externalPath ? t("Unlink from project") : t("Move to Recycle Bin")} aria-label={menu.externalPath ? t("Unlink from project") : t("Delete document")} onClick={() => { setDeleting(menu); setMenu(null); }}><Icon name={menu.externalPath ? "link" : "trash"} /></button>
+          <button className="document-action danger-hover" title={menu.externalPath ? t("Unlink from project") : t("Move to Recycle Bin")} aria-label={menu.externalPath ? t("Unlink from project") : t("Delete document")} onClick={() => { setDeleting(menu); setMenu(null); }}><Icon name="trash" />{menu.externalPath ? t("Unlink from project") : t("Move to Recycle Bin")}</button>
           <button className="icon-btn" title={t("Close")} aria-label={t("Close document actions")} onClick={() => setMenu(null)}><Icon name="close" /></button>
         </div>
       )}
@@ -227,6 +253,23 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
         }}><p>{deleting.externalPath ? t("The “{name}” tab will be removed from the project. The original file will stay in place.", { name: deleting.name }) : t("Document “{name}” will be moved to the Windows Recycle Bin. You can restore it from there.", { name: deleting.name })}</p></ConfirmDialog>}
     </div>
   );
+}
+function DocumentTab({ document: doc, active, changed, busy, menuOpen, onSelect, onMenu }: {
+  document: ProjectDocument; active: boolean; changed: boolean; busy: boolean; menuOpen: boolean;
+  onSelect: () => void; onMenu: () => void;
+}) {
+  const { t } = useI18n();
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: doc.id, disabled: busy });
+  return <div ref={setNodeRef} className={"document-tab" + (active ? " active" : "") + (menuOpen ? " menu-open" : "") + (isDragging ? " dragging" : "")}
+    style={{ transform: CSS.Translate.toString(transform), transition }}>
+    <button ref={setActivatorNodeRef} {...attributes} {...listeners} className={(active ? "active " : "") + "document-tab-name"}
+      title={doc.name + " · " + (doc.externalPath ?? doc.file)} onClick={onSelect} disabled={busy}>
+      {doc.externalPath && <Icon name="link" />}<span>{doc.name}</span>
+      {changed && <span className="document-change-dot" title={t("File changed")} aria-label={t("File changed")} />}
+    </button>
+    <button className="document-tab-menu" title={t("Actions: {name}", { name: doc.name })} aria-label={t("Document actions: {name}", { name: doc.name })}
+      aria-expanded={menuOpen} onClick={onMenu} disabled={busy}><Icon name="more" /></button>
+  </div>;
 }
 function DocumentNameDialog({ initial, title, busy, error, onSubmit, onClose }: {
   initial: string; title: string; busy: boolean; error: string | null; onSubmit: (name: string) => Promise<void>; onClose: () => void;

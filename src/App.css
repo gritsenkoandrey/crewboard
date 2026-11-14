@@ -1158,32 +1158,33 @@ body {
   font: inherit;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: none;
-  color: var(--text);
+  color: var(--muted);
   cursor: pointer;
 }
 
 .filter-chip:hover {
-  border-color: var(--border-strong);
+  background: var(--hover);
+  color: var(--text);
 }
 
 .filter-chip.active {
-  border-color: var(--label-color, var(--muted));
-  background: color-mix(in srgb, var(--label-color, var(--muted)) 20%, var(--bg));
+  background: var(--active-bg);
+  color: var(--accent-text);
 }
 
 .filter-chip.no-label {
-  color: var(--muted);
-  font-style: italic;
+  font-style: normal;
 }
 
 .filter-count {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .label-filter-heading {

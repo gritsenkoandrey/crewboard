@@ -1,6 +1,7 @@
 import { useI18n } from "../i18n";
 import { labelStyle } from "../labels";
 import type { Label } from "../types";
+import Icon from "./Icon";
 
 /** Filter key for unlabeled tasks. Cannot collide with label IDs, which contain only letters and digits. */
 export const NO_LABEL = "__none__";
@@ -19,8 +20,8 @@ interface Props {
 export default function LabelFilter({ labels, counts, selected, onToggle, onClear, onManage }: Props) {
   const { t } = useI18n();
   return (
-    <div className="label-filter">
-      <span className="label-filter-heading">
+    <div className="label-filter filter-row" role="group" aria-label={t("Filter by label")}>
+      <span className="label-filter-heading filter-row-heading">
         <span className="muted label-filter-title">{t("Labels:")}</span>
         <button type="button" className="icon-btn manage-labels" onClick={onManage}
           title={t("Manage labels")} aria-label={t("Manage labels")}>
@@ -31,31 +32,35 @@ export default function LabelFilter({ labels, counts, selected, onToggle, onClea
           </svg>
         </button>
       </span>
+      <div className="filter-options">
+      <button type="button" className={"filter-chip filter-all" + (!selected.size ? " active" : "")}
+        aria-pressed={!selected.size} onClick={onClear}>{t("All")}<Icon name="check" className="filter-choice-check" /></button>
       {labels.length === 0 && <span className="muted">{t("No labels yet — create them here or in a task")}</span>}
       {labels.map((label) => (
         <button
           key={label.id}
+          type="button" title={label.name} aria-pressed={selected.has(label.id)}
           className={`filter-chip ${selected.has(label.id) ? "active" : ""}`}
           style={labelStyle(label.color)}
           onClick={() => onToggle(label.id)}
         >
           <span className="label-dot" />
-          {label.name}
-          <span className="filter-count">{counts.get(label.id) ?? 0}</span>
+          <span className="filter-choice-name">{label.name}</span>
+          <span className="filter-count" aria-hidden="true">{counts.get(label.id) ?? 0}</span>
+          <Icon name="check" className="filter-choice-check" />
         </button>
       ))}
       {labels.length > 0 && (
         <button
+          type="button" aria-pressed={selected.has(NO_LABEL)}
           className={`filter-chip no-label ${selected.has(NO_LABEL) ? "active" : ""}`}
           onClick={() => onToggle(NO_LABEL)}
         >
-          {t("Unlabeled")}<span className="filter-count">{counts.get(NO_LABEL) ?? 0}</span>
+          {t("Unlabeled")}<span className="filter-count" aria-hidden="true">{counts.get(NO_LABEL) ?? 0}</span>
+          <Icon name="check" className="filter-choice-check" />
         </button>
       )}
-      {selected.size > 0 && (
-        <button className="link-btn" onClick={onClear}>
-          {t("Reset")}</button>
-      )}
+      </div>
     </div>
   );
 }
