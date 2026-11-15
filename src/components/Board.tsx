@@ -24,7 +24,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { getBoard, saveBoard, getParticipants, releaseTask } from "../api";
+import { getBoard, saveBoard, getParticipants, releaseTask, deleteTask as removeTask, restoreDeletedTask } from "../api";
 import { stampBoard, taskCode, setTaskArchived } from "../taskMetadata";
 import { compareTaskNumbers, sortTasksByNumber } from "../taskOrdering";
 import { registerFlusher, trackSave } from "../saveTracker";
@@ -106,6 +106,9 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   const moveNoticeRef = useRef<TaskMove | null>(null);
   const [undoingMove, setUndoingMove] = useState(false);
   const undoInProgress = useRef(false);
+  const [deletedTaskNotice, setDeletedTaskNotice] = useState<{ token: string; number?: number } | null>(null);
+  const [deletionBusy, setDeletionBusy] = useState(false);
+  const deletionRunning = useRef(false);
   // Keep the current board for delayed edits, such as task panel autosaves:
   // apply them to the latest state rather than a stale closure snapshot.
   const boardRef = useRef<BoardData | null>(null);
@@ -348,6 +351,7 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   }
 
   function archiveTask(id: string) {
+    setDeletedTaskNotice(null);
     showMoveNotice(null);
     change((b) => setTaskArchived(b, id, true));
     setOpenTaskId(null);
@@ -355,6 +359,7 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   }
 
   function restoreTask(id: string) {
+    setDeletedTaskNotice(null);
     showMoveNotice(null);
     change((b) => setTaskArchived(b, id, false));
     if (archivedNotice === id) setArchivedNotice(null);
@@ -421,16 +426,70 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
     const next = { ...before, [from]: before[from].filter((task) => task.id !== id), [to]: [...before[to], task] };
     update(next, before);
     showMoveNotice(recordTaskMove(before, next, id));
+    setDeletedTaskNotice(null);
     setArchivedNotice(null);
   }
 
   function deleteTask(id: string) {
+    if (deletionRunning.current || undoInProgress.current || dragStart.current) return;
+    deletionRunning.current = true;
+    setDeletionBusy(true);
     showMoveNotice(null);
+    setArchivedNotice(null);
     if (openTaskId === id) setOpenTaskId(null);
-    change((b) => {
-      const column = findColumn(b, id);
-      return column ? { ...b, [column]: b[column].filter((t) => t.id !== id) } : b;
-    });
+    void trackSave((async () => {
+      let mutating = false;
+      try {
+        await saveQueue.current;
+        if (saveFailed.current) throw new Error(t("Resolve the board save error first"));
+        const before = boardRef.current;
+        if (!before) return;
+        const column = findColumn(before, id);
+        const task = column ? before[column].find((task) => task.id === id) : undefined;
+        if (!task) return;
+        const version = ++generation.current;
+        pendingSaves.current += 1;
+        mutating = true;
+        const deleted = await removeTask(projectId, task);
+        if (generation.current === version && !dragStart.current) {
+          boardRef.current = deleted.board;
+          setBoard(deleted.board);
+          setError(null);
+        }
+        setDeletedTaskNotice({ token: deleted.token, number: deleted.number ?? undefined });
+      } catch (e) { setError(String(e)); }
+      finally {
+        if (mutating) pendingSaves.current -= 1;
+        deletionRunning.current = false;
+        setDeletionBusy(false);
+      }
+    })());
+  }
+
+  async function undoTaskDeletion() {
+    if (!deletedTaskNotice || deletionRunning.current || undoInProgress.current || dragStart.current) return;
+    deletionRunning.current = true;
+    setDeletionBusy(true);
+    let mutating = false;
+    try {
+      await saveQueue.current;
+      if (saveFailed.current) throw new Error(t("Resolve the board save error first"));
+      const version = ++generation.current;
+      pendingSaves.current += 1;
+      mutating = true;
+      const restored = await restoreDeletedTask(projectId, deletedTaskNotice.token);
+      if (generation.current === version && !dragStart.current) {
+        boardRef.current = restored;
+        setBoard(restored);
+        setError(null);
+      }
+      setDeletedTaskNotice(null);
+    } catch (e) { setError(String(e)); }
+    finally {
+      if (mutating) pendingSaves.current -= 1;
+      deletionRunning.current = false;
+      setDeletionBusy(false);
+    }
   }
 
   function onDragStart({ active }: DragStartEvent) {
@@ -468,7 +527,7 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
     update(next, before ?? current);
     if (before) {
       const move = recordTaskMove(before, next, String(active.id));
-      if (move) { showMoveNotice(move); setArchivedNotice(null); }
+      if (move) { showMoveNotice(move); setArchivedNotice(null); setDeletedTaskNotice(null); }
     }
   }
 
@@ -484,13 +543,13 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   const openTask = openColumn ? current[openColumn].find((t) => t.id === openTaskId) : undefined;
 
   return (
-    <div className="board-view">
+    <div className="board-view" aria-busy={deletionBusy} inert={deletionBusy}>
       {actionsTarget && createPortal(
         <>
-          <button type="button" className="btn task-search-button" aria-keyshortcuts="Control+f" title={t("Search tasks (Ctrl+F)")} onClick={() => setSearchOpen(true)}>
+          <button type="button" className="btn task-search-button" disabled={deletionBusy} aria-keyshortcuts="Control+f" title={t("Search tasks (Ctrl+F)")} onClick={() => setSearchOpen(true)}>
             <Icon name="search" />{t("Search")}
           </button>
-          <button className="btn archive-button" title={t("Open archive")} onClick={() => setArchiveOpen(true)}>
+          <button className="btn archive-button" disabled={deletionBusy} title={t("Open archive")} onClick={() => setArchiveOpen(true)}>
             <Icon name="archive" /> {t("Archive")}<span className="archive-count">{archivedTasks.length}</span>
           </button>
         </>,
@@ -666,6 +725,13 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
           <span>{t("Task {code} moved to {status}", { code: taskCode(current.taskPrefix, moveNotice.taskNumber), status: t(COLUMNS.find((column) => column.id === moveNotice.to)!.title) })}</span>
           <button type="button" className="link-btn" disabled={undoingMove || !!activeId} onClick={() => void trackSave(undoLastMove())}>{t(undoingMove ? "Undoing…" : "Undo")}</button>
           <button type="button" className="icon-btn" disabled={undoingMove} aria-label={t("Dismiss notification")} onClick={() => showMoveNotice(null)}><Icon name="close" /></button>
+        </div>
+      )}
+      {deletedTaskNotice && (
+        <div className="archive-toast deletion-toast" role="status">
+          <span>{t("Task {code} deleted", { code: taskCode(current.taskPrefix, deletedTaskNotice.number) })}</span>
+          <button type="button" className="link-btn" disabled={deletionBusy || !!activeId} onClick={() => void trackSave(undoTaskDeletion())}>{t(deletionBusy ? "Undoing…" : "Undo")}</button>
+          <button type="button" className="icon-btn" disabled={deletionBusy} aria-label={t("Dismiss notification")} onClick={() => setDeletedTaskNotice(null)}><Icon name="close" /></button>
         </div>
       )}
       {managingLabels && (

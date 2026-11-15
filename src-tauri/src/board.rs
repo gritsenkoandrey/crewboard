@@ -10,6 +10,27 @@ use std::fs;
 use std::io::ErrorKind;
 use tauri::AppHandle;
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+struct DeletedTask {
+    token: String,
+    dir: PathBuf,
+    task: Task,
+    column: usize,
+    position: usize,
+}
+
+#[derive(Default)]
+pub struct DeletedTaskState(Mutex<Option<DeletedTask>>);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedTaskReceipt {
+    token: String,
+    number: Option<u64>,
+    board: Board,
+}
 
 /// Must match TASK_TITLE_MAX in src/components/Board.tsx.
 const MAX_TITLE_CHARS: usize = 2000;
@@ -184,6 +205,56 @@ pub fn save_board(app: AppHandle, id: String, board: Board, base: Board) -> CmdR
     Ok(merged)
 }
 
+fn delete_with_undo(dir: &Path, expected: &Task, state: &DeletedTaskState) -> CmdResult<DeletedTaskReceipt> {
+    let mut undo = state.0.lock().map_err(|_| "Task undo state is unavailable")?;
+    let _lock = crate::storage::lock(dir, "board.lock")?;
+    let mut board = load(dir)?;
+    let (column, position) = [&board.todo, &board.in_progress, &board.done].into_iter().enumerate()
+        .find_map(|(column, tasks)| tasks.iter().position(|task| task.id == expected.id).map(|position| (column, position)))
+        .ok_or("Task not found")?;
+    let tasks = match column { 0 => &mut board.todo, 1 => &mut board.in_progress, _ => &mut board.done };
+    let current = &tasks[position];
+    if current.extra.get("claim").is_some_and(serde_json::Value::is_object) {
+        return Err("Release the task before deleting it".into());
+    }
+    if current != expected { return Err("The task changed before deletion. Reload it and try again.".into()); }
+    let task = tasks.remove(position);
+    let token = crate::agents::unique();
+    store(dir, &board)?;
+    let number = task.number;
+    *undo = Some(DeletedTask { token: token.clone(), dir: dir.into(), task, column, position });
+    Ok(DeletedTaskReceipt { token, number, board })
+}
+
+fn restore_with_undo(dir: &Path, token: &str, state: &DeletedTaskState) -> CmdResult<Board> {
+    let mut undo = state.0.lock().map_err(|_| "Task undo state is unavailable")?;
+    let saved = undo.as_ref().filter(|saved| saved.token == token && saved.dir == dir)
+        .ok_or("This task deletion can no longer be undone")?;
+    let _lock = crate::storage::lock(dir, "board.lock")?;
+    let mut board = load(dir)?;
+    if board.tasks().any(|task| task.id == saved.task.id || saved.task.number.is_some() && task.number == saved.task.number) {
+        return Err("A task with this ID or number already exists. Nothing was overwritten.".into());
+    }
+    let lists = [&mut board.todo, &mut board.in_progress, &mut board.done];
+    let tasks = lists.into_iter().nth(saved.column).ok_or("Invalid original task status")?;
+    tasks.insert(saved.position.min(tasks.len()), saved.task.clone());
+    if let Some(number) = saved.task.number { board.next_task_number = board.next_task_number.max(number.saturating_add(1)); }
+    let board = validate(board)?;
+    store(dir, &board)?;
+    *undo = None;
+    Ok(board)
+}
+
+#[tauri::command]
+pub fn delete_task(app: AppHandle, id: String, task: Task, state: tauri::State<'_, DeletedTaskState>) -> CmdResult<DeletedTaskReceipt> {
+    delete_with_undo(&project_dir(&app, &id)?, &task, &state)
+}
+
+#[tauri::command]
+pub fn restore_deleted_task(app: AppHandle, id: String, token: String, state: tauri::State<'_, DeletedTaskState>) -> CmdResult<Board> {
+    restore_with_undo(&project_dir(&app, &id)?, &token, &state)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +348,54 @@ mod tests {
         let b = board(r#"{ "todo": [{ "id": "a", "title": "Задача" }] }"#);
         let text = serde_json::to_string(&b.todo[0]).unwrap();
         assert!(!text.contains("labels"), "omit an empty task label list: {text}");
+    }
+
+    struct DeletionFixture(PathBuf);
+    impl DeletionFixture {
+        fn new() -> Self {
+            let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target").join(format!(".task-delete-undo-test-{}", crate::agents::unique()));
+            fs::create_dir_all(&dir).unwrap();
+            let initial = board(r#"{"taskPrefix":"TT","nextTaskNumber":10,"todo":[{"id":"a","number":8,"title":"Delete me","description":"Keep text","acceptanceCriteria":"Keep criteria","labels":["bug"],"reports":[{"text":"Keep report"}]}],"inProgress":[{"id":"b","number":9,"title":"Other task"}],"done":[],"labels":[{"id":"bug","name":"Bug","color":"red"}]}"#);
+            store(&dir, &initial).unwrap();
+            Self(dir)
+        }
+    }
+    impl Drop for DeletionFixture {
+        fn drop(&mut self) {
+            assert!(self.0.starts_with(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target")));
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    #[test] fn deleted_task_undo_restores_identity_and_content_without_reverting_other_edits() {
+        let fixture = DeletionFixture::new(); let state = DeletedTaskState::default();
+        let expected = load(&fixture.0).unwrap().todo[0].clone();
+        let deleted = delete_with_undo(&fixture.0, &expected, &state).unwrap();
+        assert!(deleted.board.todo.is_empty()); assert_eq!(deleted.number, Some(8));
+        let mut current = load(&fixture.0).unwrap(); current.in_progress[0].title = "Edited other task".into();
+        current.next_task_number = 20; store(&fixture.0, &current).unwrap();
+        let restored = restore_with_undo(&fixture.0, &deleted.token, &state).unwrap();
+        assert_eq!(restored.todo[0], expected); assert_eq!(restored.in_progress[0].title, "Edited other task");
+        assert_eq!(restored.next_task_number, 20);
+        assert!(restore_with_undo(&fixture.0, &deleted.token, &state).is_err());
+    }
+    #[test] fn task_deletion_rejects_stale_content_and_active_sessions() {
+        let fixture = DeletionFixture::new(); let state = DeletedTaskState::default();
+        let expected = load(&fixture.0).unwrap().todo[0].clone();
+        let mut newer = load(&fixture.0).unwrap(); newer.todo[0].title = "New title".into(); store(&fixture.0, &newer).unwrap();
+        assert!(delete_with_undo(&fixture.0, &expected, &state).err().unwrap().contains("changed"));
+        newer.todo[0].extra.insert("claim".into(), serde_json::json!({"sessionId":"new"})); store(&fixture.0, &newer).unwrap();
+        assert!(delete_with_undo(&fixture.0, &newer.todo[0], &state).err().unwrap().contains("Release"));
+        assert_eq!(load(&fixture.0).unwrap().todo.len(), 1);
+    }
+    #[test] fn deleted_task_undo_refuses_collisions_and_wrong_tokens_without_consuming_undo() {
+        let fixture = DeletionFixture::new(); let state = DeletedTaskState::default();
+        let expected = load(&fixture.0).unwrap().todo[0].clone();
+        let deleted = delete_with_undo(&fixture.0, &expected, &state).unwrap();
+        assert!(restore_with_undo(&fixture.0, "wrong-token", &state).is_err());
+        let mut current = load(&fixture.0).unwrap(); let mut collision = expected.clone(); collision.id = "replacement".into();
+        current.done.push(collision); store(&fixture.0, &current).unwrap();
+        assert!(restore_with_undo(&fixture.0, &deleted.token, &state).unwrap_err().contains("already exists"));
+        current.done.clear(); store(&fixture.0, &current).unwrap();
+        assert_eq!(restore_with_undo(&fixture.0, &deleted.token, &state).unwrap().todo[0].id, "a");
     }
 }

@@ -11,6 +11,7 @@ A dedicated CLI lets local agents claim tasks and submit work reports.
 - Projects with cover images, renaming, and a separate source code folder.
 - A **Not started → In progress → Done** Kanban board with drag-and-drop status changes and automatic ascending task-number ordering.
 - Undo the latest status move from its notification, including moves made by dragging or from the task panel. Current task edits are preserved.
+- Deleting a task or project also shows an Undo notification. Tasks retain their original code and content; projects are restored from the Windows Recycle Bin.
 - Permanent task codes such as `TT-24`, update timestamps, Markdown descriptions, and acceptance criteria.
 - Task search from the board with **Ctrl+F**: find by code or title and open with Enter or a click, including archived tasks and tasks hidden by filters.
 - Colored labels and filters matching any selected label or unlabeled tasks.

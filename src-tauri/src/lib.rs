@@ -107,6 +107,8 @@ fn set_data_dir(app: AppHandle, path: String) -> CmdResult<DataDirInfo> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(board::DeletedTaskState::default())
+        .manage(projects::DeletedProjectState::default())
         .setup(|app| {
             #[cfg(windows)]
             window_chrome::init(app);
@@ -135,10 +137,13 @@ pub fn run() {
             projects::create_project,
             projects::rename_project,
             projects::delete_project,
+            projects::restore_deleted_project,
             projects::set_cover,
             projects::remove_cover,
             board::get_board,
             board::save_board,
+            board::delete_task,
+            board::restore_deleted_task,
             docs::link_document,
             docs::unlink_document,
             docs::document_revisions,

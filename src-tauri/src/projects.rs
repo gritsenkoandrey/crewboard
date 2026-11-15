@@ -16,6 +16,28 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
+use std::collections::HashSet;
+use std::ffi::OsString;
+use std::sync::{Arc, Mutex};
+
+struct DeletedProject {
+    token: String,
+    dir: PathBuf,
+    previous_trash_ids: HashSet<OsString>,
+}
+
+#[derive(Default)]
+pub struct DeletedProjectState(Arc<Mutex<Option<DeletedProject>>>);
+
+#[derive(Serialize)]
+pub struct DeletedProjectReceipt { token: String }
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    fn normalized(path: &Path) -> String {
+        path.to_string_lossy().trim_start_matches(r"\\?\").replace('/', "\\").to_lowercase()
+    }
+    normalized(left) == normalized(right)
+}
 
 const PROJECTS_DIR: &str = "projects";
 const META_FILE: &str = "project.json";
@@ -255,26 +277,79 @@ pub fn remove_cover(app: AppHandle, id: String) -> CmdResult<Project> {
 
 /// Moves a project to the Windows Recycle Bin so accidental deletion can be undone.
 #[tauri::command]
-pub async fn delete_project(app: AppHandle, id: String) -> CmdResult<()> {
+pub async fn delete_project(app: AppHandle, id: String, state: tauri::State<'_, DeletedProjectState>) -> CmdResult<DeletedProjectReceipt> {
     let dir = project_dir(&app, &id)?;
-    recycle_project(dir).await
+    let store = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || delete_project_with_undo(dir, &store))
+        .await.map_err(|e| format!("Project recycling worker failed: {e}"))?
 }
 
+fn delete_project_with_undo(dir: PathBuf, state: &Mutex<Option<DeletedProject>>) -> CmdResult<DeletedProjectReceipt> {
+    let mut undo = state.lock().map_err(|_| "Project undo state is unavailable")?;
+    let previous_trash_ids = trash::os_limited::list().map_err(|e| format!("Cannot prepare project undo: {e}"))?
+        .into_iter().filter(|item| same_path(&item.original_path(), &dir)).map(|item| item.id).collect();
+    recycle_project_sync(&dir)?;
+    let token = crate::agents::unique();
+    *undo = Some(DeletedProject { token: token.clone(), dir, previous_trash_ids });
+    Ok(DeletedProjectReceipt { token })
+}
+
+#[cfg(test)]
 async fn recycle_project(dir: PathBuf) -> CmdResult<()> {
     // Shell/COM operations must not run inside the WebView's synchronous IPC callback.
     tauri::async_runtime::spawn_blocking(move || {
         // Wait for in-flight project and board writes to finish, then release the locks:
         // Windows refuses to move a directory while any file inside it (the lock files too)
         // is still open, which surfaced as "access denied to the source (0x80270021)".
-        drop(crate::storage::lock(&dir, "project.lock")?);
-        drop(crate::storage::lock(&dir, "board.lock")?);
-        trash::delete(&dir).map_err(|e| format!("Failed to move the project to the Recycle Bin: {e}"))
+        recycle_project_sync(&dir)
     }).await.map_err(|e| format!("Project recycling worker failed: {e}"))?
+}
+
+fn recycle_project_sync(dir: &Path) -> CmdResult<()> {
+    drop(crate::storage::lock(dir, "project.lock")?);
+    drop(crate::storage::lock(dir, "board.lock")?);
+    trash::delete(dir).map_err(|e| format!("Failed to move the project to the Recycle Bin: {e}"))
+}
+
+fn restore_recycled_project(saved: &DeletedProject) -> CmdResult<Project> {
+    if saved.dir.exists() { return Err("A project already exists at the original location. Nothing was overwritten.".into()); }
+    let root = saved.dir.parent().ok_or("Invalid original project folder")?;
+    let staging = root.join(format!(".restore-{}", saved.token));
+    let staged = staging.join(saved.dir.file_name().ok_or("Invalid original project folder")?);
+    if !staged.is_dir() {
+        let listed = trash::os_limited::list().map_err(|e| format!("Cannot find the deleted project: {e}"))?;
+        let mut matches: Vec<_> = listed.into_iter().filter(|item| same_path(&item.original_path(), &saved.dir) && !saved.previous_trash_ids.contains(&item.id)).collect();
+        if matches.len() != 1 { return Err("The deleted project was not found uniquely in the Recycle Bin. Nothing was restored.".into()); }
+        fs::create_dir_all(&staging).map_err(|e| format!("Cannot prepare project restoration: {e}"))?;
+        let mut item = matches.remove(0);
+        // Restore to a private staging directory first; the final rename must not replace a new project.
+        item.original_parent = staging.clone();
+        trash::os_limited::restore_all([item]).map_err(|e| format!("Cannot restore the project from the Recycle Bin: {e}"))?;
+    }
+    fs::rename(&staged, &saved.dir).map_err(|e| format!("Cannot return the project to its original folder. Data is preserved at {}: {e}", staged.display()))?;
+    let _ = fs::remove_dir(&staging);
+    Ok(load_project(&saved.dir))
+}
+
+#[tauri::command]
+pub async fn restore_deleted_project(app: AppHandle, token: String, state: tauri::State<'_, DeletedProjectState>) -> CmdResult<Project> {
+    let root = projects_root(&data_dir(&app)?);
+    let store = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut undo = store.lock().map_err(|_| "Project undo state is unavailable")?;
+        let saved = undo.as_ref().filter(|saved| saved.token == token && saved.dir.parent().is_some_and(|parent| same_path(parent, &root)))
+            .ok_or("This project deletion can no longer be undone")?;
+        let project = restore_recycled_project(saved)?;
+        *undo = None;
+        Ok(project)
+    }).await.map_err(|e| format!("Project restoration worker failed: {e}"))?
 }
 
 #[cfg(test)]
 mod tests {
     use super::slugify;
+    #[cfg(windows)]
+    use std::{fs, path::PathBuf};
 
     #[cfg(windows)]
     #[test]
@@ -335,5 +410,51 @@ mod tests {
     fn slugify_handles_empty_and_reserved() {
         assert_eq!(slugify("!!!"), "project");
         assert_eq!(slugify("CON"), "project-con");
+    }
+
+    #[cfg(windows)]
+    struct UndoFixture(PathBuf);
+    #[cfg(windows)]
+    impl UndoFixture {
+        fn new() -> Self {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target").join(format!(".project-delete-undo-test-{}", crate::agents::unique()));
+            fs::create_dir_all(root.join("sample")).unwrap();
+            fs::write(root.join("sample/project.json"), r#"{"name":"Undo fixture","createdAt":1}"#).unwrap();
+            fs::write(root.join("sample/board.json"), r#"{"todo":[{"id":"a","title":"Keep task"}]}"#).unwrap();
+            fs::write(root.join("sample/document.md"), "Keep project document").unwrap();
+            fs::write(root.join("external.md"), "Keep linked external document").unwrap();
+            Self(root)
+        }
+    }
+    #[cfg(windows)]
+    impl Drop for UndoFixture {
+        fn drop(&mut self) {
+            assert!(self.0.starts_with(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target")));
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    #[cfg(windows)]
+    #[test] fn project_deletion_can_be_undone_from_the_recycle_bin() {
+        let fixture = UndoFixture::new(); let state = super::DeletedProjectState::default(); let dir = fixture.0.join("sample");
+        let receipt = super::delete_project_with_undo(dir.clone(), &state.0).unwrap();
+        assert!(!dir.exists());
+        let undo = state.0.lock().unwrap(); let saved = undo.as_ref().unwrap(); assert_eq!(saved.token, receipt.token);
+        let restored = super::restore_recycled_project(saved).unwrap();
+        assert_eq!(restored.name, "Undo fixture"); assert_eq!(restored.id, "sample");
+        assert_eq!(fs::read_to_string(dir.join("document.md")).unwrap(), "Keep project document");
+        assert_eq!(fs::read_to_string(dir.join("board.json")).unwrap(), r#"{"todo":[{"id":"a","title":"Keep task"}]}"#);
+        assert_eq!(fs::read_to_string(fixture.0.join("external.md")).unwrap(), "Keep linked external document");
+    }
+    #[cfg(windows)]
+    #[test] fn project_restore_does_not_overwrite_a_new_project_at_the_old_location() {
+        let fixture = UndoFixture::new(); let state = super::DeletedProjectState::default(); let dir = fixture.0.join("sample");
+        super::delete_project_with_undo(dir.clone(), &state.0).unwrap();
+        fs::create_dir(&dir).unwrap(); fs::write(dir.join("new.txt"), "New project data").unwrap();
+        let undo = state.0.lock().unwrap(); let saved = undo.as_ref().unwrap();
+        assert!(super::restore_recycled_project(saved).err().unwrap().contains("already exists"));
+        assert_eq!(fs::read_to_string(dir.join("new.txt")).unwrap(), "New project data");
+        fs::remove_file(dir.join("new.txt")).unwrap(); fs::remove_dir(&dir).unwrap();
+        super::restore_recycled_project(saved).unwrap();
+        assert_eq!(fs::read_to_string(dir.join("document.md")).unwrap(), "Keep project document");
     }
 }

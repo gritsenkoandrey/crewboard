@@ -376,12 +376,12 @@ export default function TaskPanel({
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => {
             setConfirmDelete(false);
-            // Discard unsaved edits for the task being deleted.
-            pending.current = {};
+            // Undo must restore the content currently shown in the panel.
+            flush();
             onDelete();
           }}
         >
-          <p>{t("“{name}” and its description will be permanently deleted.", { name: task.title })}</p>
+          <p>{t("Task “{name}” will be deleted. You can undo the deletion from the notification.", { name: task.title })}</p>
         </ConfirmDialog>
       )}
     </>

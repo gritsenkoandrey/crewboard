@@ -2,12 +2,13 @@ import { useI18n } from "./i18n";
 import AgentSettings from "./components/AgentSettings";
 import Icon from "./components/Icon";
 import LanguageSwitcher from "./components/LanguageSwitcher";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { flushAll } from "./saveTracker";
+import { flushAll, trackSave } from "./saveTracker";
 import {
   createProject,
   deleteProject,
+  restoreDeletedProject,
   getDataDir,
   listProjects,
   pickFolder,
@@ -26,12 +27,16 @@ export default function App() {
   const { t } = useI18n();
   const [agentSettings, setAgentSettings] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
+  const [restoringProject, setRestoringProject] = useState(false);
+  const [deletedProject, setDeletedProject] = useState<{ token: string; name: string } | null>(null);
+  const projectOperation = useRef(false);
   const [info, setInfo] = useState<DataDirInfo | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const ready = !!info?.path && !info.missing;
+  const projectBusy = deletingProject || restoringProject;
 
   const reload = useCallback(async () => {
     try {
@@ -84,6 +89,7 @@ export default function App() {
     await run(async () => {
       setInfo(await setDataDir(path));
       setOpenId(null);
+      setDeletedProject(null);
     });
   }
 
@@ -102,6 +108,34 @@ export default function App() {
     return run(async () => replaceProject(await removeCover(id)));
   }
 
+  async function removeProject(id: string) {
+    if (projectOperation.current) return;
+    projectOperation.current = true;
+    setDeletingProject(true);
+    setError(null);
+    const name = projects.find((project) => project.id === id)?.name ?? id;
+    try {
+      await flushAll();
+      const receipt = await deleteProject(id);
+      setProjects((list) => list.filter((project) => project.id !== id));
+      setDeletedProject({ token: receipt.token, name });
+    } catch (e) { setError(String(e)); }
+    finally { projectOperation.current = false; setDeletingProject(false); }
+  }
+
+  async function undoProjectDeletion() {
+    if (!deletedProject || projectOperation.current) return;
+    projectOperation.current = true;
+    setRestoringProject(true);
+    setError(null);
+    try {
+      const restored = await restoreDeletedProject(deletedProject.token);
+      setProjects((list) => [restored, ...list.filter((project) => project.id !== restored.id)]);
+      setDeletedProject(null);
+    } catch (e) { setError(String(e)); }
+    finally { projectOperation.current = false; setRestoringProject(false); }
+  }
+
   if (!info) {
     return <div className="center muted">{error ?? t("Loading…")}</div>;
   }
@@ -113,8 +147,8 @@ export default function App() {
   const openProject = projects.find((p) => p.id === openId) ?? null;
 
   return (
-    <div className="app" aria-busy={deletingProject}>
-      <header className="topbar" inert={deletingProject}>
+    <div className="app" aria-busy={projectBusy}>
+      <header className="topbar" inert={projectBusy}>
         <button className="logo" onClick={() => setOpenId(null)}>
           Crewboard
         </button>
@@ -144,7 +178,8 @@ export default function App() {
       )}
       {agentSettings && <AgentSettings onClose={() => setAgentSettings(false)} />}
       {deletingProject && <div className="project-deletion-status" role="status">{t("Moving project to the Recycle Bin…")}</div>}
-      <main className="content" inert={deletingProject}>
+      {restoringProject && <div className="project-deletion-status" role="status">{t("Restoring project…")}</div>}
+      <main className="content" inert={projectBusy}>
         {openProject ? (
           <ProjectPage
             key={openProject.id}
@@ -157,7 +192,7 @@ export default function App() {
         ) : (
           <ProjectList
             projects={projects}
-            onOpen={setOpenId}
+            onOpen={(id) => { setDeletedProject(null); setOpenId(id); }}
             onCreate={(name) =>
               run(async () => {
                 const created = await createProject(name);
@@ -167,18 +202,15 @@ export default function App() {
             onRename={(id, name) => run(async () => replaceProject(await renameProject(id, name)))}
             onChangeCover={changeCover}
             onRemoveCover={deleteCover}
-            onDelete={async (id) => {
-              setDeletingProject(true);
-              try {
-                await run(async () => {
-                  await deleteProject(id);
-                  setProjects((list) => list.filter((p) => p.id !== id));
-                });
-              } finally { setDeletingProject(false); }
-            }}
+            onDelete={(id) => trackSave(removeProject(id))}
           />
         )}
       </main>
+      {deletedProject && <div className="archive-toast project-deletion-toast" role="status">
+        <span>{t("Project “{name}” moved to the Recycle Bin", { name: deletedProject.name })}</span>
+        <button type="button" className="link-btn" disabled={projectBusy} onClick={() => void trackSave(undoProjectDeletion())}>{t(restoringProject ? "Undoing…" : "Undo")}</button>
+        <button type="button" className="icon-btn" disabled={projectBusy} aria-label={t("Dismiss notification")} onClick={() => setDeletedProject(null)}><Icon name="close" /></button>
+      </div>}
     </div>
   );
 }

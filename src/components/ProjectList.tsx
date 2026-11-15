@@ -141,7 +141,7 @@ export default function ProjectList({
           }}
         >
           <p>
-            {t("Project “{name}”, including all tasks and documents, will be moved to the Windows Recycle Bin. You can restore it from there.", { name: deleting.name })}
+            {t("Project “{name}”, including all tasks and documents, will be moved to the Windows Recycle Bin. You can undo the deletion from the notification or restore it from the Recycle Bin.", { name: deleting.name })}
           </p>
         </ConfirmDialog>
       )}

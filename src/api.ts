@@ -1,7 +1,7 @@
 import { translate as t } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Board, Project, Participant } from "./types";
+import type { Board, Project, Participant, Task } from "./types";
 
 export interface DataDirInfo {
   /** Path from settings, if a folder was previously selected. */
@@ -31,8 +31,20 @@ export function renameProject(id: string, name: string): Promise<Project> {
 }
 
 /** Moves the project folder to the Windows Recycle Bin. */
-export function deleteProject(id: string): Promise<void> {
+export function deleteProject(id: string): Promise<{ token: string }> {
   return invoke("delete_project", { id });
+}
+
+export function restoreDeletedProject(token: string): Promise<Project> {
+  return invoke("restore_deleted_project", { token });
+}
+
+export interface DeletedTaskReceipt { token: string; number: number | null; board: Board }
+export function deleteTask(id: string, task: Task): Promise<DeletedTaskReceipt> {
+  return invoke("delete_task", { id, task });
+}
+export function restoreDeletedTask(id: string, token: string): Promise<Board> {
+  return invoke("restore_deleted_task", { id, token });
 }
 
 export function getBoard(id: string): Promise<Board> {
