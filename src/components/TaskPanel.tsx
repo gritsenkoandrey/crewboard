@@ -1,8 +1,9 @@
 import { useI18n } from "../i18n";
 import Icon from "./Icon";
-import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { handleMarkdownClick, renderMarkdown } from "../markdown";
 import { registerFlusher } from "../saveTracker";
+import { loadViewPreferences, saveViewPreferences } from "../viewPreferences";
 import type { ColumnId, Label, Task, Participant } from "../types";
 import ConfirmDialog from "./ConfirmDialog";
 import LabelPicker from "./LabelPicker";
@@ -60,6 +61,12 @@ export default function TaskPanel({
   onClose,
 }: Props) {
   const { t, locale } = useI18n();
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    // Keep the Markdown editor's autofocus when opening an empty description.
+    if (panel && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+  }, []);
   const [title, setTitle] = useState(task.title);
   const [criteria, setCriteria] = useState(task.acceptanceCriteria ?? "");
   const [descriptionVersion, setDescriptionVersion] = useState(0);
@@ -71,6 +78,47 @@ export default function TaskPanel({
   const [editing, setEditing] = useState(!task.description);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [descriptionSize, setDescriptionSize] = useState(() => loadViewPreferences(projectDir).descriptionSize);
+  const descriptionSizeRef = useRef(descriptionSize);
+  descriptionSizeRef.current = descriptionSize;
+  const [measuredDescriptionSize, setMeasuredDescriptionSize] = useState(50);
+  const [resizingDescription, setResizingDescription] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const descriptionPaneRef = useRef<HTMLDivElement>(null);
+  const resizeHandleRef = useRef<HTMLDivElement>(null);
+  const resizeStart = useRef<{ pointerId: number; y: number; height: number; available: number } | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => saveViewPreferences(projectDir, { descriptionSize }), 150);
+    return () => clearTimeout(timer);
+  }, [projectDir, descriptionSize]);
+
+  useEffect(() => {
+    const save = () => saveViewPreferences(projectDir, { descriptionSize: descriptionSizeRef.current });
+    const unregister = registerFlusher(save);
+    window.addEventListener("pagehide", save);
+    return () => {
+      unregister();
+      window.removeEventListener("pagehide", save);
+      save();
+    };
+  }, [projectDir]);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    const pane = descriptionPaneRef.current;
+    const handle = resizeHandleRef.current;
+    if (!content || !pane || !handle) return;
+    const measure = () => {
+      const available = content.clientHeight - handle.offsetHeight;
+      if (available > 0) setMeasuredDescriptionSize(Math.round(pane.offsetHeight / available * 100));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, []);
 
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const pending = useRef<TaskPatch>({});
@@ -143,7 +191,7 @@ export default function TaskPanel({
   return (
     <>
       <div className="panel-backdrop" onMouseDown={onClose}>
-        <aside className="task-panel" role="dialog" aria-label={t("Task")} onMouseDown={(e) => e.stopPropagation()}>
+        <aside ref={panelRef} tabIndex={-1} className="task-panel" role="dialog" aria-label={t("Task")} onMouseDown={(e) => e.stopPropagation()}>
           <div className="panel-top">
             <div className="status-switch">
               {columns.map((c) => (
@@ -171,108 +219,146 @@ export default function TaskPanel({
               </button>
             </div>
           </div>
-  
-          {task.archived && <span className="muted small">{t("Task is archived")}</span>}
-          <div className="task-metadata">
-            <span className="task-code">{taskCode}</span>
-            <span className="muted">{t("Updated:")} {task.updatedAt ? <time dateTime={new Date(task.updatedAt).toISOString()}>{new Date(task.updatedAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })}</time> : t("unknown")}</span>
-          </div>
-          <textarea
-            ref={titleRef}
-            className="panel-title"
-            rows={1}
-            value={title}
-            maxLength={titleMaxLength}
-            placeholder={t("Task title")}
-            onChange={(e) => onTitleChange(e.target.value)}
-            onBlur={commitTitle}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                e.currentTarget.blur();
-              }
-            }}
-          />
-
-          <div className="agent-assignment">
-            <label htmlFor="task-assignee">{t("Assignee")}</label>
-            <select id="task-assignee" value={task.assigneeId ?? ""} disabled={!!task.claim} onChange={(e) => onChange({ assigneeId: e.target.value })}>
-              <option value="">{t("Unassigned")}</option>
-              {participants.map((p) => <option key={p.id} value={p.id}>{p.name}{p.kind === "agent" ? t(" · agent") : ""}</option>)}
-            </select>
-          </div>
-          {task.claim && <div className="agent-session">
-            <span className="muted">{t("Session: {session}", { session: task.claim.sessionId })}</span>
-            <button className="link-btn" onClick={() => { flush(); setReleaseConfirm(true); }}>{t("Release task")}</button>
-          </div>}
-          {task.readyForReview && <div className="agent-review" role="status">{t("Ready for review — move the task to Done after reviewing it.")}</div>}
-          {task.question && <div className="agent-question"><strong>{t("Needs an answer")}</strong><p>{task.question}</p></div>}
-          <LabelPicker
-            labels={labels}
-            selected={task.labels ?? []}
-            onToggle={(id) => {
-              const current = task.labels ?? [];
-              onSetLabels(current.includes(id) ? current.filter((l) => l !== id) : [...current, id]);
-            }}
-            onCreate={onCreateLabel}
-          />
-
-          <details className="agent-criteria">
-            <summary>{t("Acceptance criteria")}{criteria ? t(" · filled in") : ""}</summary>
-            <textarea aria-label={t("Acceptance criteria")} placeholder={t("What should work and how to verify it")} rows={3} value={criteria}
-              onChange={(e) => { const value = e.target.value; setCriteria(value); pending.current.acceptanceCriteria = value; window.clearTimeout(timer.current); timer.current = window.setTimeout(flush, AUTOSAVE_MS); }} onBlur={flush} />
-          </details>
-          {(task.reports?.length ?? 0) > 0 && <details className="agent-reports">
-            <summary>{t("Work reports · {count}", { count: task.reports!.length })}</summary>
-            <div className="agent-report-list">{[...task.reports!].reverse().map((report, index) => (
-              <article key={report.createdAt + ":" + index}>
-                <header className="muted small">{participants.find((p) => p.id === report.authorId)?.name ?? report.authorId} · {new Date(report.createdAt).toLocaleString(locale)} · {report.sessionId}</header>
-                <div className="markdown" onClick={(e) => handleMarkdownClick(e, setError)} dangerouslySetInnerHTML={{ __html: renderMarkdown(report.text, projectDir) }} />
-              </article>
-            ))}</div>
-          </details>}
-          <div className="panel-section-header">
-            <span className="muted">{t("Description")}</span>
-            {(description || editing) && (
-              <button className="link-btn" onClick={() => {
-                if (editing) {
-                  flush();
-                  onClose();
-                } else {
-                  setEditing(true);
-                }
-              }}>
-                {editing ? t("Done") : t("Edit")}
-              </button>
-            )}
-          </div>
-  
-          {error && (
-            <div className="error-bar panel-error">
-              <span>{error}</span>
-              <button className="icon-btn" title={t("Close")} onClick={() => setError(null)}>
-                <Icon name="close" />
-              </button>
-            </div>
-          )}
-  
-          <div className="panel-body">
-            {editing ? (
-              <div className="panel-editor">
-                <MarkdownEditor key={descriptionVersion} initialText={description} onChange={onDescriptionChange} onSave={flush} />
+          <div ref={contentRef} className={"panel-content" + (resizingDescription ? " resizing-description" : "")}
+            style={descriptionSize === null ? undefined : { "--description-size": `${descriptionSize}fr`, "--details-size": `${100 - descriptionSize}fr` } as CSSProperties}>
+            <div className="panel-details">
+              {task.archived && <span className="muted small">{t("Task is archived")}</span>}
+              <div className="task-metadata">
+                <span className="task-code">{taskCode}</span>
+                <span className="muted">{t("Updated:")} {task.updatedAt ? <time dateTime={new Date(task.updatedAt).toISOString()}>{new Date(task.updatedAt).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })}</time> : t("unknown")}</span>
               </div>
-            ) : description.trim() ? (
-              <article
-                className="markdown panel-preview"
-                title={t("Double-click to edit")}
-                onClick={(e) => handleMarkdownClick(e, setError)}
-                onDoubleClick={() => setEditing(true)}
-                dangerouslySetInnerHTML={{ __html: html }}
+              <textarea
+                ref={titleRef}
+                className="panel-title"
+                rows={1}
+                value={title}
+                maxLength={titleMaxLength}
+                placeholder={t("Task title")}
+                onChange={(e) => onTitleChange(e.target.value)}
+                onBlur={commitTitle}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                  }
+                }}
               />
-            ) : (
-              <button className="panel-empty" onClick={() => setEditing(true)}>
-                {t("Add description…")}</button>
-            )}
+
+              <div className="agent-assignment">
+                <label htmlFor="task-assignee">{t("Assignee")}</label>
+                <select id="task-assignee" value={task.assigneeId ?? ""} disabled={!!task.claim} onChange={(e) => onChange({ assigneeId: e.target.value })}>
+                  <option value="">{t("Unassigned")}</option>
+                  {participants.map((p) => <option key={p.id} value={p.id}>{p.name}{p.kind === "agent" ? t(" · agent") : ""}</option>)}
+                </select>
+              </div>
+              {task.claim && <div className="agent-session">
+                <span className="muted">{t("Session: {session}", { session: task.claim.sessionId })}</span>
+                <button className="link-btn" onClick={() => { flush(); setReleaseConfirm(true); }}>{t("Release task")}</button>
+              </div>}
+              {task.readyForReview && <div className="agent-review" role="status">{t("Ready for review — move the task to Done after reviewing it.")}</div>}
+              {task.question && <div className="agent-question"><strong>{t("Needs an answer")}</strong><p>{task.question}</p></div>}
+              <LabelPicker
+                labels={labels}
+                selected={task.labels ?? []}
+                onToggle={(id) => {
+                  const current = task.labels ?? [];
+                  onSetLabels(current.includes(id) ? current.filter((l) => l !== id) : [...current, id]);
+                }}
+                onCreate={onCreateLabel}
+              />
+
+              <details className="agent-criteria">
+                <summary>{t("Acceptance criteria")}{criteria ? t(" · filled in") : ""}</summary>
+                <textarea aria-label={t("Acceptance criteria")} placeholder={t("What should work and how to verify it")} rows={3} value={criteria}
+                  onChange={(e) => { const value = e.target.value; setCriteria(value); pending.current.acceptanceCriteria = value; window.clearTimeout(timer.current); timer.current = window.setTimeout(flush, AUTOSAVE_MS); }} onBlur={flush} />
+              </details>
+              {(task.reports?.length ?? 0) > 0 && <details className="agent-reports">
+                <summary>{t("Work reports · {count}", { count: task.reports!.length })}</summary>
+                <div className="agent-report-list">{[...task.reports!].reverse().map((report, index) => (
+                  <article key={report.createdAt + ":" + index}>
+                    <header className="muted small">{participants.find((p) => p.id === report.authorId)?.name ?? report.authorId} · {new Date(report.createdAt).toLocaleString(locale)} · {report.sessionId}</header>
+                    <div className="markdown" onClick={(e) => handleMarkdownClick(e, setError)} dangerouslySetInnerHTML={{ __html: renderMarkdown(report.text, projectDir) }} />
+                  </article>
+                ))}</div>
+              </details>}
+            </div>
+            <div ref={resizeHandleRef} className="panel-description-resizer" role="separator" tabIndex={0}
+              aria-label={t("Description area size")} aria-orientation="horizontal" aria-valuemin={0} aria-valuemax={100} aria-valuenow={measuredDescriptionSize}
+              title={t("Drag to resize description. Double-click to reset.")}
+              onDoubleClick={() => setDescriptionSize(null)}
+              onPointerDown={(e) => {
+                if (e.button !== 0 || !contentRef.current || !descriptionPaneRef.current) return;
+                e.preventDefault();
+                const available = contentRef.current.clientHeight - e.currentTarget.offsetHeight;
+                if (available <= 0) return;
+                resizeStart.current = { pointerId: e.pointerId, y: e.clientY, height: descriptionPaneRef.current.offsetHeight, available };
+                e.currentTarget.setPointerCapture(e.pointerId);
+                setResizingDescription(true);
+              }}
+              onPointerMove={(e) => {
+                const start = resizeStart.current;
+                if (!start || start.pointerId !== e.pointerId) return;
+                setDescriptionSize(Math.max(0, Math.min(100, (start.height + start.y - e.clientY) / start.available * 100)));
+              }}
+              onPointerUp={(e) => { if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); }}
+              onPointerCancel={() => { resizeStart.current = null; setResizingDescription(false); }}
+              onLostPointerCapture={() => { resizeStart.current = null; setResizingDescription(false); }}
+              onKeyDown={(e) => {
+                let next: number;
+                if (e.key === "ArrowUp") next = measuredDescriptionSize + 5;
+                else if (e.key === "ArrowDown") next = measuredDescriptionSize - 5;
+                else if (e.key === "Home") next = 0;
+                else if (e.key === "End") next = 100;
+                else if (e.key === "Enter") { e.preventDefault(); setDescriptionSize(null); return; }
+                else return;
+                e.preventDefault();
+                setDescriptionSize(Math.max(0, Math.min(100, next)));
+              }} />
+            <div ref={descriptionPaneRef} className="panel-description">
+              <div className="panel-section-header">
+                <span className="muted">{t("Description")}</span>
+                {(description || editing) && (
+                  <button className="link-btn" onClick={() => {
+                    if (editing) {
+                      flush();
+                      onClose();
+                    } else {
+                      setEditing(true);
+                    }
+                  }}>
+                    {editing ? t("Done") : t("Edit")}
+                  </button>
+                )}
+              </div>
+
+              {error && (
+                <div className="error-bar panel-error">
+                  <span>{error}</span>
+                  <button className="icon-btn" title={t("Close")} onClick={() => setError(null)}>
+                    <Icon name="close" />
+                  </button>
+                </div>
+              )}
+
+              <div className="panel-body">
+                {editing ? (
+                  <div className="panel-editor">
+                    <MarkdownEditor key={descriptionVersion} initialText={description} onChange={onDescriptionChange} onSave={flush} />
+                  </div>
+                ) : description.trim() ? (
+                  <article
+                    className="markdown panel-preview"
+                    title={t("Double-click to edit")}
+                    onClick={(e) => handleMarkdownClick(e, setError)}
+                    onDoubleClick={() => setEditing(true)}
+                    dangerouslySetInnerHTML={{ __html: html }}
+                  />
+                ) : (
+                  <button className="panel-empty" onClick={() => setEditing(true)}>
+                    {t("Add description…")}</button>
+                )}
+              </div>
+            </div>
           </div>
         </aside>
       </div>

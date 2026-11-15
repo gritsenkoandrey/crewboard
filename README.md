@@ -9,9 +9,12 @@ A dedicated CLI lets local agents claim tasks and submit work reports.
 ## Features
 
 - Projects with cover images, renaming, and a separate source code folder.
-- A **Not started → In progress → Done** Kanban board with drag-and-drop task ordering.
+- A **Not started → In progress → Done** Kanban board with drag-and-drop status changes and automatic ascending task-number ordering.
+- Undo the latest status move from its notification, including moves made by dragging or from the task panel. Current task edits are preserved.
 - Permanent task codes such as `TT-24`, update timestamps, Markdown descriptions, and acceptance criteria.
+- Task search from the board with **Ctrl+F**: find by code or title and open with Enter or a click, including archived tasks and tasks hidden by filters.
 - Colored labels and filters matching any selected label or unlabeled tasks.
+- Per-project view preferences: description height, expanded filters, and board scroll position survive navigation and app restarts.
 - A task archive that restores tasks to their original column. Deletion is a separate action.
 - Multiple project documents: create, rename, and reorder tabs.
 - Link external `.md` files and edit the originals without copying them into the project folder.
@@ -112,7 +115,7 @@ You can rename it like any other document. Document names stay exactly as saved 
 - The project folder name is its permanent ID; renaming changes the display name.
 - `sourceDir` points to project code, separate from the tracker's data folder.
 - `board.json` contains `todo`, `inProgress`, `done`, `labels`, `taskPrefix`, and `nextTaskNumber`.
-  Array order determines column order. Archived tasks stay in their original column.
+  Tasks are displayed by ascending numeric task number within each column and in the archive. Dragging changes status; it does not override numeric ordering. Archived tasks stay in their original column.
 - Linked documents have an `externalPath` in `documents.json`; content stays at its original location.
 - Relative images such as `![](screens/menu.png)` resolve from the Markdown file's own folder.
 

@@ -39,6 +39,7 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
   const editor = useRef<DocsHandle>(null);
   const working = useRef(false);
   const documentTabs = useRef<HTMLDivElement>(null);
+  const [boardActions, setBoardActions] = useState<HTMLDivElement | null>(null);
   const horizontalTabDrag = useCallback<Modifier>(({ transform, activeNodeRect }) => {
     const bounds = documentTabs.current?.getBoundingClientRect();
     if (!bounds || !activeNodeRect) return { ...transform, x: 0, y: 0 };
@@ -213,6 +214,7 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
             </DndContext>
             <button className="icon-btn document-add" title={t("Add document")} aria-label={t("Add document")} aria-expanded={addMenu}
               disabled={!loaded || busy} onClick={() => { setMenu(null); setAddMenu(!addMenu); }}><Icon name="plus" /></button>
+            {tab === "board" && <div ref={setBoardActions} className="project-board-actions" />}
           </div>
         </div>
       </div>
@@ -234,10 +236,10 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
         </div>
       )}
       {error && <div className="error-bar"><span>{error}</span><button className="icon-btn" aria-label={t("Dismiss error")} onClick={() => setError(null)}><Icon name="close" /></button></div>}
-      <div className="tab-content" aria-busy={busy}>
+      <div className={"tab-content" + (tab === "board" ? " board-tab-content" : "")} aria-busy={busy}>
         {!loaded ? <p className="muted">{t("Loading…")}</p> : activeDocument ? (
           <Docs ref={editor} key={project.id + ":" + activeDocument.id + ":" + (activeDocument.externalPath ?? "")} projectId={project.id} documentId={activeDocument.id} onSeen={markSeen} />
-        ) : <Board projectId={project.id} projectDir={project.dir} />}
+        ) : <Board projectId={project.id} projectDir={project.dir} actionsTarget={boardActions} />}
       </div>
       {nameDialog && <DocumentNameDialog initial={nameDialog.document?.name ?? ""} title={nameDialog.document ? t("Rename document") : t("New document")}
         busy={busy} error={error} onSubmit={saveName} onClose={() => { if (!busy) { setNameDialog(null); setError(null); } }} />}

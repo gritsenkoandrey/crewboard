@@ -10,6 +10,10 @@
     "icons": "tauri icon app-icon.png",
     "preview": "vite preview",
     "test:i18n": "node --test scripts/i18n.test.mjs",
+    "test:tasks": "node --test scripts/task-ordering.test.mjs",
+    "test:view": "node --test scripts/view-preferences.test.mjs",
+    "test:search": "node --test scripts/task-search.test.mjs",
+    "test:moves": "node --test scripts/task-move.test.mjs",
     "tauri": "tauri",
     "agent": "node scripts/crewboard-cli.mjs",
     "agent:build": "cargo build --manifest-path src-tauri/Cargo.toml --bin crewboard-cli"

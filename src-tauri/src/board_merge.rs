@@ -51,6 +51,12 @@ pub(crate) fn merge(base: &Board, local: &Board, remote: &Board) -> CmdResult<Bo
     for id in ids {
         let entry = match (bt.get(id),lt.get(id),rt.get(id)) {
             (Some(base),Some(local),Some(remote)) => {
+                // A status edit must not move a task out from under a newly started
+                // session or review submission, including the read/save gap during Undo.
+                if local.0 != base.0 && local.0 != remote.0
+                    && ["claim", "readyForReview", "question"].iter().any(|key| remote.1[*key] != base.1[*key]) {
+                    return Err(conflict("task workflow"));
+                }
                 let col = value(&json!(base.0),&json!(local.0),&json!(remote.0),"task status")?.as_str().unwrap().to_string();
                 let mut task = value(&base.1,&local.1,&remote.1,&format!("task {id}"))?;
                 if remote.1["claim"].is_object() && local.1["assigneeId"] != base.1["assigneeId"] && local.1["assigneeId"] != remote.1["assigneeId"] {
@@ -133,5 +139,23 @@ pub(crate) fn merge(base: &Board, local: &Board, remote: &Board) -> CmdResult<Bo
         base["inProgress"]=json!([task.clone()]);let mut local=base.clone();local["inProgress"]=json!([]);local["done"]=json!([task]);
         let result=serde_json::to_value(merge(&board(base.clone()),&board(local),&board(base)).unwrap()).unwrap();
         assert!(result["done"][0]["claim"].is_null());assert_eq!(result["done"][0]["readyForReview"],false);assert_eq!(result["done"][0]["reports"][0]["text"],"Result");
+    }
+    #[test] fn status_undo_rejects_workflow_changes_between_read_and_save() {
+        let mut base=base();let task=base["todo"].as_array_mut().unwrap().remove(0);base["inProgress"]=json!([task]);
+        let mut local=base.clone();let task=local["inProgress"].as_array_mut().unwrap().remove(0);local["todo"]=json!([task]);
+        for patch in [json!({"claim":{"sessionId":"new"}}),json!({"readyForReview":true}),json!({"question":"New question"})] {
+            let mut remote=base.clone();
+            for (key,value) in patch.as_object().unwrap() {remote["inProgress"][0][key]=value.clone();}
+            assert!(merge(&board(base.clone()),&board(local.clone()),&board(remote)).unwrap_err().contains("task workflow"));
+        }
+    }
+    #[test] fn status_undo_preserves_concurrent_content_edits() {
+        let mut base=base();let task=base["todo"].as_array_mut().unwrap().remove(0);base["inProgress"]=json!([task]);
+        let mut local=base.clone();let task=local["inProgress"].as_array_mut().unwrap().remove(0);local["todo"]=json!([task]);
+        let mut remote=base.clone();remote["inProgress"][0]["description"]=json!("New description");
+        remote["inProgress"][0]["reports"]=json!([{"text":"Keep report"}]);
+        let result=serde_json::to_value(merge(&board(base),&board(local),&board(remote)).unwrap()).unwrap();
+        assert_eq!(result["todo"][0]["description"],"New description");
+        assert_eq!(result["todo"][0]["reports"][0]["text"],"Keep report");
     }
 }

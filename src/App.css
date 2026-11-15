@@ -151,6 +151,7 @@ body {
   align-items: center;
   gap: 16px;
   padding: 10px 20px;
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
@@ -577,10 +578,14 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  /* No top padding here: it would push the sticky filter bar below the edge,
-     exposing cards above it. Each tab provides its own padding (.board-toolbar, .docs). */
+  /* Each tab provides its own top padding (.board-toolbar, .docs). */
   /* Leave space between the scrollbar and the buttons and columns. */
   padding-right: 12px;
+}
+
+.board-tab-content {
+  overflow: hidden;
+  padding-right: 0;
 }
 
 /* Documents */
@@ -798,7 +803,27 @@ body {
 }
 
 /* Kanban board */
+.board-view {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 12px;
+}
+
+.board-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .board {
+  min-height: 100%;
   display: grid;
   grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 16px;
@@ -807,6 +832,7 @@ body {
 }
 
 .board-error {
+  flex-shrink: 0;
   margin-bottom: 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -829,11 +855,11 @@ body {
   outline-color: color-mix(in srgb, var(--col-color) 60%, transparent);
 }
 
-/* Column headers stick directly below the filter bar. Match the column background,
+/* Column headers stick to the top of the board's own scroll area. Match the column background,
    and use negative margins to cover its padding so cards do not show at the edges. */
 .column-header {
   position: sticky;
-  top: var(--toolbar-h, 0px);
+  top: 0;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -1140,13 +1166,11 @@ body {
   font-size: 13px;
 }
 
-/* Pin the filter bar to the top of the scroll area so cards scroll underneath it.
-   Keep bottom spacing inside the bar with a background so cards do not show through the gap. */
+/* Filters stay above the board's scroll area, so its scrollbar starts at the columns. */
 .board-toolbar {
-  position: sticky;
-  top: 0;
+  flex-shrink: 0;
   z-index: 3;
-  padding: 20px 0 12px;
+  padding: 20px 12px 12px 0;
   background: var(--bg);
 }
 
@@ -1355,6 +1379,7 @@ body {
 }
 
 .panel-top {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1436,6 +1461,58 @@ body {
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
+}
+
+.panel-content {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(var(--details-min, 80px), var(--details-size, auto)) 12px minmax(var(--description-min, 120px), var(--description-size, 1fr));
+}
+
+.panel-details, .panel-description {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-details {
+  overflow: auto;
+  padding: 0 6px;
+  margin: 0 -6px;
+}
+
+.panel-details > * { flex-shrink: 0; }
+
+.panel-description-resizer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.panel-description-resizer::after {
+  content: "";
+  width: 48px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.panel-description-resizer:hover::after,
+.panel-description-resizer:focus-visible::after,
+.resizing-description .panel-description-resizer::after { background: var(--accent); }
+
+.panel-description-resizer:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.resizing-description { cursor: row-resize; user-select: none; }
+.panel-description > .panel-section-header, .panel-description > .panel-error { flex-shrink: 0; }
+
+@media (max-height: 400px) {
+  .panel-content { --details-min: 40px; --description-min: 80px; }
 }
 
 .panel-error {

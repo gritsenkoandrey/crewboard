@@ -1,7 +1,8 @@
 import { useI18n } from "../i18n";
 import type { Message } from "../locales";
 import Icon from "./Icon";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -19,16 +20,17 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
-  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { getBoard, saveBoard, getParticipants, releaseTask } from "../api";
 import { stampBoard, taskCode, setTaskArchived } from "../taskMetadata";
-import { trackSave } from "../saveTracker";
-import { LabelPill, nextLabelColor } from "../labels";
+import { compareTaskNumbers, sortTasksByNumber } from "../taskOrdering";
+import { registerFlusher, trackSave } from "../saveTracker";
+import { loadViewPreferences, saveViewPreferences } from "../viewPreferences";
+import { recordTaskMove, undoTaskMove, type TaskMove } from "../taskMove";
+import { LabelPill, labelStyle, nextLabelColor } from "../labels";
 import type { Board as BoardData, ColumnId, Label, Task, Participant } from "../types";
 import InlineInput from "./InlineInput";
 import LabelFilter, { NO_LABEL } from "./LabelFilter";
@@ -36,6 +38,7 @@ import AssigneeFilter, { NO_ASSIGNEE } from "./AssigneeFilter";
 import LabelManager from "./LabelManager";
 import ConfirmDialog from "./ConfirmDialog";
 import TaskArchive from "./TaskArchive";
+import TaskSearch from "./TaskSearch";
 import TaskPanel, { type TaskPatch } from "./TaskPanel";
 
 const COLUMNS: { id: ColumnId; title: Message }[] = [
@@ -55,8 +58,8 @@ function newId(): string {
 }
 
 /**
- * Choose a drop target under the pointer first: a card (insert next to it)
- * or empty column space (append). Use the nearest target only when outside all columns.
+ * Choose a drop target under the pointer first: a card or empty column space.
+ * Use the nearest target only when outside all columns.
  * closestCorners alone misses in tall columns because adjacent column corners can be closer.
  */
 const collisionDetection: CollisionDetection = (args) => {
@@ -74,7 +77,7 @@ function findColumn(board: BoardData, id: string): ColumnId | null {
   return COLUMNS.find((c) => board[c.id].some((t) => t.id === id))?.id ?? null;
 }
 
-export default function Board({ projectId, projectDir }: { projectId: string; projectDir: string }) {
+export default function Board({ projectId, projectDir, actionsTarget }: { projectId: string; projectDir: string; actionsTarget: HTMLElement | null }) {
   const { t } = useI18n();
   const [board, setBoard] = useState<BoardData | null>(null);
   const [reloadConfirm, setReloadConfirm] = useState(false);
@@ -88,21 +91,21 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Set<string>>(() => loadFilter(projectId));
   const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(() => loadFilter(projectId, "assignee"));
+  const [initialView] = useState(() => loadViewPreferences(projectDir));
+  const [filtersOpen, setFiltersOpen] = useState(initialView.filtersOpen);
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const scrollRestored = useRef(false);
+  const scrollPosition = useRef({ scrollTop: initialView.scrollTop, scrollLeft: initialView.scrollLeft });
+  const scrollSaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const filtersId = useId();
   const [managingLabels, setManagingLabels] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [archivedNotice, setArchivedNotice] = useState<string | null>(null);
-  // Sticky filter bar height: column headers stick below it.
-  // Measure the actual height because labels can wrap onto multiple lines.
-  const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
-  const [toolbarHeight, setToolbarHeight] = useState(0);
-  useEffect(() => {
-    if (!toolbar) return;
-    // Measure immediately instead of waiting for ResizeObserver, which runs when a frame renders.
-    setToolbarHeight(toolbar.offsetHeight);
-    const observer = new ResizeObserver(() => setToolbarHeight(toolbar.offsetHeight));
-    observer.observe(toolbar);
-    return () => observer.disconnect();
-  }, [toolbar]);
+  const [moveNotice, setMoveNotice] = useState<TaskMove | null>(null);
+  const moveNoticeRef = useRef<TaskMove | null>(null);
+  const [undoingMove, setUndoingMove] = useState(false);
+  const undoInProgress = useRef(false);
   // Keep the current board for delayed edits, such as task panel autosaves:
   // apply them to the latest state rather than a stale closure snapshot.
   const boardRef = useRef<BoardData | null>(null);
@@ -111,6 +114,43 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   const dragStart = useRef<BoardData | null>(null);
   // Serialize saves so an older version cannot overwrite a newer one.
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.isComposing || e.altKey || !(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "f") return;
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (document.querySelector('[role="dialog"]') || target?.isContentEditable || target?.closest("input, textarea, select, .cm-editor")) return;
+      if (!boardRef.current || dragStart.current) return;
+      e.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Restore once, after asynchronous board loading has created the scroll area.
+  useLayoutEffect(() => {
+    const area = scrollArea.current;
+    if (!area || scrollRestored.current) return;
+    area.scrollTop = initialView.scrollTop;
+    area.scrollLeft = initialView.scrollLeft;
+    scrollPosition.current = { scrollTop: area.scrollTop, scrollLeft: area.scrollLeft };
+    scrollRestored.current = true;
+  }, [board, initialView]);
+
+  useEffect(() => {
+    const save = () => {
+      clearTimeout(scrollSaveTimer.current);
+      if (scrollRestored.current) saveViewPreferences(projectDir, scrollPosition.current);
+    };
+    const unregister = registerFlusher(save);
+    window.addEventListener("pagehide", save);
+    return () => {
+      unregister();
+      window.removeEventListener("pagehide", save);
+      save();
+    };
+  }, [projectDir]);
 
   const sensors = useSensors(
     // Use a small movement threshold so clicks and double-clicks do not start dragging.
@@ -185,6 +225,53 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     if (b) update(fn(b));
   }
 
+  function showMoveNotice(move: TaskMove | null) {
+    moveNoticeRef.current = move;
+    setMoveNotice(move);
+  }
+
+  async function undoLastMove() {
+    const move = moveNoticeRef.current;
+    if (!move || undoInProgress.current || dragStart.current) return;
+    undoInProgress.current = true;
+    setUndoingMove(true);
+    let reading = false;
+    try {
+      await saveQueue.current;
+      if (saveFailed.current) {
+        setError(t("Resolve the save error before undoing the move."));
+        return;
+      }
+      if (moveNoticeRef.current !== move) return;
+      pendingSaves.current += 1;
+      reading = true;
+      const version = ++generation.current;
+      const fresh = await getBoard(projectId);
+      if (moveNoticeRef.current !== move) return;
+      if (generation.current !== version || dragStart.current) {
+        setError(t("The board changed while undoing. Try again."));
+        return;
+      }
+      const next = undoTaskMove(fresh, move);
+      if (!next) {
+        boardRef.current = fresh;
+        setBoard(fresh);
+        showMoveNotice(null);
+        setError(t("The task changed after the move. Undo is no longer available."));
+        return;
+      }
+      update(next, fresh);
+      showMoveNotice(null);
+      await saveQueue.current;
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      if (reading) pendingSaves.current -= 1;
+      undoInProgress.current = false;
+      setUndoingMove(false);
+    }
+  }
+
   function changeFilter(next: Set<string>) {
     setFilter(next);
     saveFilter(projectId, next);
@@ -197,7 +284,13 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   if (error && !board) return <div className="error">{error}</div>;
   if (!board) return <div className="muted">{t("Loading…")}</div>;
 
-  const current = board;
+  // Derive display order on every render, including polling and drag previews.
+  const current: BoardData = {
+    ...board,
+    todo: sortTasksByNumber(board.todo),
+    inProgress: sortTasksByNumber(board.inProgress),
+    done: sortTasksByNumber(board.done),
+  };
   const labels = current.labels ?? [];
 
   // Exclude deleted labels from the filter. Match any selected label: show a task if it has at least one
@@ -219,6 +312,16 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     }
   }
   const activeAssignees = new Set([...assigneeFilter].filter((id) => id === NO_ASSIGNEE || assigneeIds.has(id)));
+  const activeFilterCount = activeFilter.size + activeAssignees.size;
+  const filterSummary: { id: string; kind: "label" | "assignee"; name: string; color?: string }[] = [];
+  for (const label of labels) {
+    if (activeFilter.has(label.id)) filterSummary.push({ ...label, kind: "label" });
+  }
+  if (activeFilter.has(NO_LABEL)) filterSummary.push({ id: NO_LABEL, kind: "label", name: t("Unlabeled") });
+  for (const assignee of assignees) {
+    if (activeAssignees.has(assignee.id)) filterSummary.push({ ...assignee, kind: "assignee" });
+  }
+  if (activeAssignees.has(NO_ASSIGNEE)) filterSummary.push({ id: NO_ASSIGNEE, kind: "assignee", name: t("Without assignee") });
   const isVisible = (task: Task) => !task.archived && matchesLabels(task)
     && (activeAssignees.size === 0 || activeAssignees.has(task.assigneeId || NO_ASSIGNEE));
 
@@ -236,7 +339,8 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     }
   }
 
-  const archivedTasks = COLUMNS.flatMap((c) => current[c.id].filter((task) => task.archived).map((task) => ({ task, column: c.id, status: t(c.title) })));
+  const archivedTasks = COLUMNS.flatMap((c) => current[c.id].filter((task) => task.archived).map((task) => ({ task, column: c.id, status: t(c.title) })))
+    .sort((a, b) => compareTaskNumbers(a.task, b.task));
   // Include archived tasks in label management because deleting a label affects all tasks.
   const labelUsage = new Map<string, number>();
   for (const task of COLUMNS.flatMap((c) => current[c.id])) {
@@ -244,12 +348,14 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   }
 
   function archiveTask(id: string) {
+    showMoveNotice(null);
     change((b) => setTaskArchived(b, id, true));
     setOpenTaskId(null);
     setArchivedNotice(id);
   }
 
   function restoreTask(id: string) {
+    showMoveNotice(null);
     change((b) => setTaskArchived(b, id, false));
     if (archivedNotice === id) setArchivedNotice(null);
   }
@@ -305,17 +411,21 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
     });
   }
 
-  /** Moves a task to the end of another column. */
+  /** Moves a task to another column; display order is determined by its number. */
   function moveTask(id: string, to: ColumnId) {
-    change((b) => {
-      const from = findColumn(b, id);
-      if (!from || from === to) return b;
-      const task = b[from].find((t) => t.id === id)!;
-      return { ...b, [from]: b[from].filter((t) => t.id !== id), [to]: [...b[to], task] };
-    });
+    const before = boardRef.current;
+    if (!before) return;
+    const from = findColumn(before, id);
+    if (!from || from === to) return;
+    const task = before[from].find((task) => task.id === id)!;
+    const next = { ...before, [from]: before[from].filter((task) => task.id !== id), [to]: [...before[to], task] };
+    update(next, before);
+    showMoveNotice(recordTaskMove(before, next, id));
+    setArchivedNotice(null);
   }
 
   function deleteTask(id: string) {
+    showMoveNotice(null);
     if (openTaskId === id) setOpenTaskId(null);
     change((b) => {
       const column = findColumn(b, id);
@@ -337,35 +447,29 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
       const to = findColumn(b, String(over.id));
       if (!from || !to || from === to) return b;
       const task = b[from].find((t) => t.id === active.id)!;
-      const overIndex = b[to].findIndex((t) => t.id === over.id);
-      const insertAt = overIndex >= 0 ? overIndex : b[to].length;
-      const target = [...b[to]];
-      target.splice(insertAt, 0, task);
-      return { ...b, [from]: b[from].filter((t) => t.id !== active.id), [to]: target };
+      return { ...b, [from]: b[from].filter((t) => t.id !== active.id), [to]: [...b[to], task] };
     });
   }
 
-  // Reorder within a column on drop, then save the result once.
+  // Only status changes are saved: dropping within a column cannot change numeric order.
   function onDragEnd({ active, over }: DragEndEvent) {
     setActiveId(null);
     const before = dragStart.current;
     dragStart.current = null;
-    let next = current;
-    if (over) {
-      const column = findColumn(current, String(active.id));
-      if (column && column === findColumn(current, String(over.id))) {
-        const oldIndex = current[column].findIndex((t) => t.id === active.id);
-        const newIndex = current[column].findIndex((t) => t.id === over.id);
-        if (newIndex >= 0 && oldIndex !== newIndex) {
-          next = { ...current, [column]: arrayMove(current[column], oldIndex, newIndex) };
-        }
-      }
+    if (!over) {
+      if (before) setBoard(before);
+      return;
     }
+    const next = current;
     if (JSON.stringify(next) === JSON.stringify(before)) {
       setBoard(next);
       return;
     }
     update(next, before ?? current);
+    if (before) {
+      const move = recordTaskMove(before, next, String(active.id));
+      if (move) { showMoveNotice(move); setArchivedNotice(null); }
+    }
   }
 
   function onDragCancel() {
@@ -380,7 +484,18 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
   const openTask = openColumn ? current[openColumn].find((t) => t.id === openTaskId) : undefined;
 
   return (
-    <>
+    <div className="board-view">
+      {actionsTarget && createPortal(
+        <>
+          <button type="button" className="btn task-search-button" aria-keyshortcuts="Control+f" title={t("Search tasks (Ctrl+F)")} onClick={() => setSearchOpen(true)}>
+            <Icon name="search" />{t("Search")}
+          </button>
+          <button className="btn archive-button" title={t("Open archive")} onClick={() => setArchiveOpen(true)}>
+            <Icon name="archive" /> {t("Archive")}<span className="archive-count">{archivedTasks.length}</span>
+          </button>
+        </>,
+        actionsTarget,
+      )}
       {error && (
         <div className="error-bar board-error">
           <span>{error}</span>
@@ -395,8 +510,38 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
               </button>
         </div>
       )}
-      <div ref={setToolbar} className="board-toolbar">
-        <div className="board-filters">
+      <div className="board-toolbar">
+        <div className="board-filter-heading">
+          <button type="button" className="board-filter-toggle" aria-expanded={filtersOpen} aria-controls={filtersId}
+            title={t(filtersOpen ? "Hide filters" : "Show filters")} onClick={() => {
+              const next = !filtersOpen;
+              setFiltersOpen(next);
+              saveViewPreferences(projectDir, { filtersOpen: next });
+            }}>
+            <Icon name="chevron" />{t("Filters")}
+            {activeFilterCount > 0 && <span className="board-filter-count" aria-label={t("Active filters: {count}", { count: activeFilterCount })}>{activeFilterCount}</span>}
+          </button>
+          {!filtersOpen && filterSummary.length > 0 && <div className="board-active-filters" role="group" aria-label={t("Active filters")}>
+            {filterSummary.map((item) => {
+              const removeLabel = t(item.kind === "label" ? "Remove label filter: {name}" : "Remove assignee filter: {name}", { name: item.name });
+              return <button key={`${item.kind}:${item.id}`} type="button" className={`board-active-filter board-active-filter-${item.kind}`}
+                style={item.kind === "label" ? labelStyle(item.color ?? "gray") : undefined} title={removeLabel} aria-label={removeLabel}
+                onClick={() => {
+                  const next = new Set(item.kind === "label" ? activeFilter : activeAssignees);
+                  next.delete(item.id);
+                  if (item.kind === "label") changeFilter(next); else changeAssigneeFilter(next);
+                }}>
+                {item.kind === "label" ? <span className="label-dot" aria-hidden="true" /> : <Icon name="users" />}
+                <span className="board-active-filter-name">{item.name}</span><Icon name="close" className="board-active-filter-remove" />
+              </button>;
+            })}
+          </div>}
+          {activeFilterCount > 0 && <div className="board-toolbar-actions">
+            <button type="button" className="board-filter-reset"
+              onClick={() => { changeFilter(new Set()); changeAssigneeFilter(new Set()); }}><Icon name="close" />{t("Reset filters")}</button>
+          </div>}
+        </div>
+        <div id={filtersId} className="board-filters" hidden={!filtersOpen}>
           <LabelFilter
             labels={labels}
             counts={counts}
@@ -417,13 +562,6 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
               changeAssigneeFilter(next);
             }} onClear={() => changeAssigneeFilter(new Set())} />
         </div>
-        <div className="board-toolbar-actions">
-        {(activeFilter.size > 0 || activeAssignees.size > 0) && <button type="button" className="board-filter-reset"
-          onClick={() => { changeFilter(new Set()); changeAssigneeFilter(new Set()); }}><Icon name="close" />{t("Reset filters")}</button>}
-        <button className="btn archive-button" title={t("Open archive")} onClick={() => setArchiveOpen(true)}>
-          <Icon name="archive" /> {t("Archive")}<span className="archive-count">{archivedTasks.length}</span>
-        </button>
-        </div>
       </div>
       <DndContext
         sensors={sensors}
@@ -433,7 +571,14 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
       >
-        <div className="board" style={{ "--toolbar-h": `${toolbarHeight}px` } as CSSProperties}>
+        <div ref={scrollArea} className="board-scroll" tabIndex={0} role="region" aria-label={t("Board")}
+          onScroll={(e) => {
+            if (!scrollRestored.current) return;
+            scrollPosition.current = { scrollTop: e.currentTarget.scrollTop, scrollLeft: e.currentTarget.scrollLeft };
+            clearTimeout(scrollSaveTimer.current);
+            scrollSaveTimer.current = setTimeout(() => saveViewPreferences(projectDir, scrollPosition.current), 150);
+          }}>
+        <div className="board">
           {COLUMNS.map((column) => (
             <Column
               key={column.id}
@@ -450,8 +595,14 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
             />
           ))}
         </div>
+        </div>
         <DragOverlay>{activeTask && <div className={`task-card overlay-card column-${activeColumn}`}><div className="task-body"><span className="task-code">{taskCode(current.taskPrefix, activeTask.number)}</span><span>{activeTask.title}</span></div></div>}</DragOverlay>
       </DndContext>
+
+      {searchOpen && <TaskSearch
+        tasks={COLUMNS.flatMap((column) => current[column.id].map((task) => ({ task, code: taskCode(current.taskPrefix, task.number), column: column.id, status: t(column.title) })))}
+        onClose={() => setSearchOpen(false)}
+        onOpen={(id) => { setSearchOpen(false); setOpenTaskId(id); }} />}
 
       {openTask && openColumn && (
         <TaskPanel
@@ -510,6 +661,13 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
           <button className="icon-btn" aria-label={t("Dismiss notification")} onClick={() => setArchivedNotice(null)}><Icon name="close" /></button>
         </div>
       )}
+      {moveNotice && (
+        <div className="archive-toast move-toast" role="status">
+          <span>{t("Task {code} moved to {status}", { code: taskCode(current.taskPrefix, moveNotice.taskNumber), status: t(COLUMNS.find((column) => column.id === moveNotice.to)!.title) })}</span>
+          <button type="button" className="link-btn" disabled={undoingMove || !!activeId} onClick={() => void trackSave(undoLastMove())}>{t(undoingMove ? "Undoing…" : "Undo")}</button>
+          <button type="button" className="icon-btn" disabled={undoingMove} aria-label={t("Dismiss notification")} onClick={() => showMoveNotice(null)}><Icon name="close" /></button>
+        </div>
+      )}
       {managingLabels && (
         <LabelManager
           labels={labels}
@@ -520,7 +678,7 @@ export default function Board({ projectId, projectDir }: { projectId: string; pr
           onClose={() => setManagingLabels(false)}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -582,7 +740,7 @@ function Column({ id, title, taskPrefix, tasks, total, labels, participants, onA
         </span>
       </header>
 
-      <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={tasks.map((t) => t.id)} strategy={() => null}>
         <div className="column-tasks">
           {tasks.map((task) => (
             <TaskCard

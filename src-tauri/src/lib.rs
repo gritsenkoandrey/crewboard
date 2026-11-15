@@ -5,6 +5,8 @@ pub mod agent_cli;
 mod board;
 mod docs;
 mod projects;
+#[cfg(windows)]
+mod window_chrome;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -105,6 +107,11 @@ fn set_data_dir(app: AppHandle, path: String) -> CmdResult<DataDirInfo> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            #[cfg(windows)]
+            window_chrome::init(app);
+            Ok(())
+        })
         // A second application launch brings the existing window to the foreground,
         // preventing two instances from writing to the same files.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
