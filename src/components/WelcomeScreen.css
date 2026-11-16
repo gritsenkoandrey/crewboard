@@ -1,0 +1,57 @@
+.welcome-screen {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-height: 100%;
+  width: 100%;
+  padding: 64px 24px 40px;
+}
+.welcome-screen--folder { min-height: 100dvh; padding-top: 100px; }
+.content.content-welcome { display: flex; padding: 0; }
+.project-load-error { text-align: center; }
+.welcome-toolbar { position: absolute; top: 24px; left: 28px; right: 28px; display: flex; align-items: center; justify-content: space-between; }
+.welcome-wordmark { font-size: 15px; font-weight: 650; letter-spacing: -.035em; }
+.welcome-content { width: min(100%, 470px); }
+.welcome-card {
+  padding: 36px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, white);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--bg) 95%, transparent);
+  box-shadow: 0 24px 80px -26px rgba(72, 42, 130, .2), 0 2px 8px rgba(40, 20, 80, .025);
+}
+.welcome-emblem { display: flex; align-items: center; justify-content: center; width: 58px; height: 58px; margin-bottom: 26px; color: white; border: 1px solid rgba(255, 255, 255, .3); border-radius: 17px; background: linear-gradient(145deg, #af8afa, #7852ee 65%, #567edf); box-shadow: 0 8px 24px rgba(120, 82, 238, .24), inset 0 1px 0 rgba(255,255,255,.25); }
+.welcome-eyebrow { margin: 0 0 10px; color: var(--accent-text); font-size: 11px; font-weight: 600; letter-spacing: .025em; }
+.welcome-card h1 { margin: 0; max-width: 360px; color: var(--text); font-size: clamp(27px, 3.5vw, 33px); font-weight: 650; line-height: 1.15; letter-spacing: -.045em; text-wrap: balance; }
+.welcome-description { margin: 16px 0 26px; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.welcome-primary { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 44px; padding: 11px 14px; font-size: 13px; font-weight: 550; border-radius: 9px; }
+.welcome-primary > svg:last-child { margin-left: auto; }
+.welcome-primary > svg:first-child { margin-right: auto; }
+.welcome-primary:disabled { opacity: .5; }
+.welcome-hint { margin: 14px 4px 0; color: var(--muted); font-size: 11px; line-height: 1.6; text-align: center; }
+.welcome-form { display: flex; flex-direction: column; gap: 10px; }
+.welcome-form label { color: var(--text); font-size: 12px; font-weight: 550; }
+.welcome-input { min-width: 0; width: 100%; padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; outline: none; }
+.welcome-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--active-bg); }
+.welcome-input::placeholder { color: var(--muted); opacity: .75; }
+.welcome-form .welcome-primary { margin-top: 4px; }
+.welcome-folder { display: flex; align-items: center; gap: 7px; margin-top: 6px; color: var(--muted); font-size: 11px; }
+.welcome-folder > svg { flex-shrink: 0; }
+.welcome-folder > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.welcome-folder .link-btn { flex-shrink: 0; margin-left: auto; color: var(--accent-text); font-size: 11px; }
+.welcome-warning { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; padding: 12px; border-radius: 9px; background: var(--warning-bg); color: var(--text); font-size: 12px; line-height: 1.6; }
+.welcome-warning code { overflow-wrap: anywhere; font-size: 11px; }
+.welcome-warning strong { font-weight: 550; }
+.welcome-error { margin: 14px 0 0; color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.welcome-footnote { display: flex; justify-content: center; align-items: center; gap: 7px; margin: 20px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; text-align: center; }
+.welcome-footnote svg { flex-shrink: 0; width: 13px; height: 13px; opacity: .7; }
+@media (prefers-color-scheme: dark) {
+  .welcome-card { border-color: color-mix(in srgb, var(--border) 85%, #9075cc); background: color-mix(in srgb, var(--bg) 96%, transparent); box-shadow: 0 28px 90px -24px rgba(0, 0, 0, .4), 0 0 50px -24px rgba(151, 101, 240, .14); }
+}
+@media (max-width: 520px) {
+  .welcome-screen { padding: 40px 20px 28px; }
+  .welcome-screen--folder { padding-top: 90px; }
+  .welcome-toolbar { left: 20px; right: 20px; }
+  .welcome-card { padding: 28px; border-radius: 20px; }
+}

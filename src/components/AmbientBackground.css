@@ -1,0 +1,50 @@
+.ambient-background {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 22% 20%, rgba(161, 118, 246, .12), transparent 60%),
+    radial-gradient(ellipse at 80% 85%, rgba(92, 178, 217, .1), transparent 60%);
+}
+.ambient-background::before, .ambient-background::after {
+  content: "";
+  position: absolute;
+  width: max(760px, 85%);
+  height: max(600px, 100%);
+  top: -16%;
+  left: -5%;
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 25%, transparent 100%);
+  background:
+    radial-gradient(ellipse at 50% 45%, transparent 20%, rgba(151, 101, 240, .15) 38%, rgba(222, 170, 233, .12) 48%, transparent 67%),
+    radial-gradient(ellipse at 60% 65%, rgba(111, 154, 243, .1), transparent 65%);
+  animation: ambient-drift 22s ease-in-out infinite alternate paused;
+}
+.ambient-background::after {
+  top: auto;
+  left: auto;
+  right: -18%;
+  bottom: -38%;
+  background: radial-gradient(ellipse at 50% 40%, transparent 18%, rgba(82, 167, 200, .13) 35%, rgba(151, 114, 237, .1) 48%, transparent 68%);
+  animation-duration: 28s;
+  animation-delay: -13s;
+  animation-direction: alternate-reverse;
+}
+.ambient-background[data-animating="true"]::before,
+.ambient-background[data-animating="true"]::after { animation-play-state: running; }
+.app--project-library { position: relative; isolation: isolate; }
+.ambient-background--projects { opacity: .65; }
+.ambient-background--projects::before { animation-duration: 30s; }
+.ambient-background--projects::after { animation-duration: 36s; }
+@keyframes ambient-drift {
+  from { transform: translate3d(-5%, -4%, 0) rotate(-18deg) scale(.95); }
+  to { transform: translate3d(14%, 12%, 0) rotate(22deg) scale(1.12); }
+}
+@media (prefers-color-scheme: dark) {
+  .ambient-background { background: radial-gradient(ellipse at 25% 25%, rgba(124, 76, 215, .13), transparent 65%), radial-gradient(ellipse at 80% 85%, rgba(57, 142, 180, .08), transparent 60%); }
+  .ambient-background::before, .ambient-background::after { opacity: .8; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ambient-background::before, .ambient-background::after { animation: none; }
+}

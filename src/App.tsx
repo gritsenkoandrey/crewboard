@@ -2,7 +2,7 @@ import { useI18n } from "./i18n";
 import AgentSettings from "./components/AgentSettings";
 import Icon from "./components/Icon";
 import LanguageSwitcher from "./components/LanguageSwitcher";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { flushAll, trackSave } from "./saveTracker";
 import {
@@ -21,6 +21,8 @@ import {
 } from "./api";
 import ProjectList from "./components/ProjectList";
 import ProjectPage from "./components/ProjectPage";
+import WelcomeScreen from "./components/WelcomeScreen";
+import AmbientBackground from "./components/AmbientBackground";
 import type { Project } from "./types";
 
 export default function App() {
@@ -32,19 +34,13 @@ export default function App() {
   const projectOperation = useRef(false);
   const [info, setInfo] = useState<DataDirInfo | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectList, setProjectList] = useState<{ path: string | null; status: "loading" | "loaded" | "error" }>({ path: null, status: "loading" });
+  const [reloadKey, setReloadKey] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const ready = !!info?.path && !info.missing;
   const projectBusy = deletingProject || restoringProject;
-
-  const reload = useCallback(async () => {
-    try {
-      setProjects(await listProjects());
-    } catch (e) {
-      setError(String(e));
-    }
-  }, []);
 
   useEffect(() => {
     getDataDir().then(setInfo, (e) => setError(String(e)));
@@ -69,8 +65,21 @@ export default function App() {
 
   // Reload the list whenever the data folder changes.
   useEffect(() => {
-    if (ready) void reload();
-  }, [ready, info?.path, reload]);
+    const path = info?.path;
+    if (!ready || !path) return;
+    let cancelled = false;
+    setProjectList({ path, status: "loading" });
+    listProjects().then((loaded) => {
+      if (cancelled) return;
+      setProjects(loaded);
+      setProjectList({ path, status: "loaded" });
+    }, (error) => {
+      if (cancelled) return;
+      setError(String(error));
+      setProjectList({ path, status: "error" });
+    });
+    return () => { cancelled = true; };
+  }, [ready, info?.path, reloadKey]);
 
   /** Runs an action and displays any error in the top bar. */
   async function run(action: () => Promise<void>) {
@@ -84,13 +93,19 @@ export default function App() {
 
   async function chooseFolder() {
     setError(null);
-    const path = await pickFolder(info?.path ?? undefined);
-    if (!path) return;
     await run(async () => {
+      const path = await pickFolder(info?.path ?? undefined);
+      if (!path) return;
       setInfo(await setDataDir(path));
       setOpenId(null);
       setDeletedProject(null);
     });
+  }
+
+  async function addProject(name: string, open = false) {
+    const created = await createProject(name);
+    setProjects((list) => [created, ...list]);
+    if (open) setOpenId(created.id);
   }
 
   function replaceProject(updated: Project) {
@@ -141,13 +156,18 @@ export default function App() {
   }
 
   if (!ready) {
-    return <SetupScreen info={info} error={error} onChoose={chooseFolder} />;
+    return <WelcomeScreen mode="folder" info={info} error={error} onChooseFolder={chooseFolder} />;
   }
 
-  const openProject = projects.find((p) => p.id === openId) ?? null;
+  const projectsLoaded = projectList.path === info.path && projectList.status === "loaded";
+  const projectsFailed = projectList.path === info.path && projectList.status === "error";
+  const openProject = projectsLoaded ? projects.find((p) => p.id === openId) ?? null : null;
+  const showWelcome = projectsLoaded && projects.length === 0;
+  const showProjectLibrary = projectsLoaded && !showWelcome && !openProject;
 
   return (
-    <div className="app" aria-busy={projectBusy}>
+    <div className={`app${showProjectLibrary ? " app--project-library" : ""}`} aria-busy={projectBusy}>
+      {showProjectLibrary && <AmbientBackground variant="projects" />}
       <header className="topbar" inert={projectBusy}>
         <button className="logo" onClick={() => setOpenId(null)}>
           Crewboard
@@ -179,8 +199,16 @@ export default function App() {
       {agentSettings && <AgentSettings onClose={() => setAgentSettings(false)} />}
       {deletingProject && <div className="project-deletion-status" role="status">{t("Moving project to the Recycle Bin…")}</div>}
       {restoringProject && <div className="project-deletion-status" role="status">{t("Restoring project…")}</div>}
-      <main className="content" inert={projectBusy}>
-        {openProject ? (
+      <main className={`content${showWelcome ? " content-welcome" : ""}`} inert={projectBusy}>
+        {!projectsLoaded ? <div className="center muted">
+          {projectsFailed ? <div className="project-load-error">
+            <p>{t("Could not load projects.")}</p>
+            <button className="btn" onClick={() => { setError(null); setReloadKey((key) => key + 1); }}>{t("Try again")}</button>
+          </div> : t("Loading…")}
+        </div> : showWelcome ? (
+          <WelcomeScreen mode="project" info={info} onChooseFolder={chooseFolder}
+            onCreateProject={(name) => addProject(name, true)} />
+        ) : openProject ? (
           <ProjectPage
             key={openProject.id}
             project={openProject}
@@ -194,10 +222,7 @@ export default function App() {
             projects={projects}
             onOpen={(id) => { setDeletedProject(null); setOpenId(id); }}
             onCreate={(name) =>
-              run(async () => {
-                const created = await createProject(name);
-                setProjects((list) => [created, ...list]);
-              })
+              run(() => addProject(name))
             }
             onRename={(id, name) => run(async () => replaceProject(await renameProject(id, name)))}
             onChangeCover={changeCover}
@@ -211,33 +236,6 @@ export default function App() {
         <button type="button" className="link-btn" disabled={projectBusy} onClick={() => void trackSave(undoProjectDeletion())}>{t(restoringProject ? "Undoing…" : "Undo")}</button>
         <button type="button" className="icon-btn" disabled={projectBusy} aria-label={t("Dismiss notification")} onClick={() => setDeletedProject(null)}><Icon name="close" /></button>
       </div>}
-    </div>
-  );
-}
-
-function SetupScreen({ info, error, onChoose }: { info: DataDirInfo; error: string | null; onChoose: () => void }) {
-  const { t } = useI18n();
-  return (
-    <div className="center">
-      <div className="setup">
-        <div className="setup-language"><LanguageSwitcher /></div>
-        <h1>Crewboard</h1>
-        {info.missing ? (
-          <p className="warning">
-            {t("Data folder is unavailable:")}<br />
-            <code>{info.path}</code>
-            <br />
-            {t("Connect the drive or select another folder.")}</p>
-        ) : (
-          <p>
-            {t("Choose a folder for your projects. Use a separate drive or a backed-up folder to keep your data after reinstalling Windows.")}
-          </p>
-        )}
-        <p className="muted">{t("Existing projects in this folder will be loaded automatically.")}</p>
-        <button className="btn primary" onClick={onChoose}>
-          {t("Choose folder")}</button>
-        {error && <p className="error">{error}</p>}
-      </div>
     </div>
   );
 }

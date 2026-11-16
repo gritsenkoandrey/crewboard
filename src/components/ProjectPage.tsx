@@ -10,6 +10,7 @@ import Board from "./Board";
 import Docs, { type DocsHandle } from "./Docs";
 import InlineInput from "./InlineInput";
 import ProjectCover from "./ProjectCover";
+import ProjectHeader from "./ProjectHeader";
 import Icon from "./Icon";
 import ConfirmDialog from "./ConfirmDialog";
 
@@ -163,7 +164,7 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
 
   return (
     <div className="project-page">
-      <div className="project-header">
+      <ProjectHeader project={project}>
         <div className="header-cover-wrap">
           <ProjectCover project={project} className="header-cover" />
           <div className="cover-actions">
@@ -217,7 +218,7 @@ export default function ProjectPage({ project, onBack, onRename, onChangeCover, 
             {tab === "board" && <div ref={setBoardActions} className="project-board-actions" />}
           </div>
         </div>
-      </div>
+      </ProjectHeader>
       {addMenu && <div className="document-actions document-add-options" onKeyDown={(e) => { if (e.key === "Escape") setAddMenu(false); }}>
         <button className="btn" onClick={() => { setAddMenu(false); setNameDialog({}); }}><Icon name="plus" /> {t("New document")}</button>
         <button className="btn" onClick={() => connect()}><Icon name="link" /> {t("Connect Markdown file…")}</button>
