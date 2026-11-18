@@ -6,13 +6,13 @@ interface Props {
   children: ReactNode;
   confirmLabel: string;
   danger?: boolean;
+  focusCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-export default function ConfirmDialog({ title, children, confirmLabel, danger, onConfirm, onCancel }: Props) {
+export default function ConfirmDialog({ title, children, confirmLabel, danger, focusCancel, onConfirm, onCancel }: Props) {
   const { t } = useI18n();
-  // The focused confirmation button handles Enter (autoFocus).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onCancel();
@@ -27,9 +27,9 @@ export default function ConfirmDialog({ title, children, confirmLabel, danger, o
         <h2>{title}</h2>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
-          <button className="btn" onClick={onCancel}>
+          <button className="btn" onClick={onCancel} autoFocus={focusCancel}>
             {t("Cancel")}</button>
-          <button className={`btn ${danger ? "danger" : "primary"}`} onClick={onConfirm} autoFocus>
+          <button className={`btn ${danger ? "danger" : "primary"}`} onClick={onConfirm} autoFocus={!focusCancel}>
             {confirmLabel}
           </button>
         </div>

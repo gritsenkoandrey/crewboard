@@ -3,6 +3,7 @@ export interface ViewPreferences {
   scrollTop: number;
   scrollLeft: number;
   descriptionSize: number | null;
+  releaseId: string | null;
 }
 
 function normalize(value: unknown): ViewPreferences {
@@ -14,6 +15,7 @@ function normalize(value: unknown): ViewPreferences {
     scrollLeft: position(saved.scrollLeft),
     descriptionSize: typeof saved.descriptionSize === "number" && Number.isFinite(saved.descriptionSize)
       && saved.descriptionSize >= 0 && saved.descriptionSize <= 100 ? saved.descriptionSize : null,
+    releaseId: typeof saved.releaseId === "string" && saved.releaseId.trim() ? saved.releaseId : null,
   };
 }
 

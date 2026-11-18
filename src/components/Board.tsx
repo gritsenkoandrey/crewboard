@@ -24,17 +24,18 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { getBoard, saveBoard, getParticipants, releaseTask, deleteTask as removeTask, restoreDeletedTask } from "../api";
+import { getBoard, saveBoard, getParticipants, releaseTask, deleteRelease as removeRelease, deleteTask as removeTask, restoreDeletedTask } from "../api";
 import { stampBoard, taskCode, setTaskArchived } from "../taskMetadata";
 import { compareTaskNumbers, sortTasksByNumber } from "../taskOrdering";
 import { registerFlusher, trackSave } from "../saveTracker";
 import { loadViewPreferences, saveViewPreferences } from "../viewPreferences";
 import { recordTaskMove, undoTaskMove, type TaskMove } from "../taskMove";
 import { LabelPill, labelStyle, nextLabelColor } from "../labels";
-import type { Board as BoardData, ColumnId, Label, Task, Participant } from "../types";
+import type { Board as BoardData, ColumnId, Label, Release, Task, Participant } from "../types";
 import InlineInput from "./InlineInput";
 import LabelFilter, { NO_LABEL } from "./LabelFilter";
 import AssigneeFilter, { NO_ASSIGNEE } from "./AssigneeFilter";
+import ReleaseFilter from "./ReleaseFilter";
 import LabelManager from "./LabelManager";
 import ConfirmDialog from "./ConfirmDialog";
 import TaskArchive from "./TaskArchive";
@@ -93,6 +94,8 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   const [assigneeFilter, setAssigneeFilter] = useState<Set<string>>(() => loadFilter(projectId, "assignee"));
   const [initialView] = useState(() => loadViewPreferences(projectDir));
   const [filtersOpen, setFiltersOpen] = useState(initialView.filtersOpen);
+  const [selectedRelease, setSelectedRelease] = useState(initialView.releaseId);
+  const [releaseToDelete, setReleaseToDelete] = useState<{ release: Release; tasks: Task[] } | null>(null);
   const scrollArea = useRef<HTMLDivElement>(null);
   const scrollRestored = useRef(false);
   const scrollPosition = useRef({ scrollTop: initialView.scrollTop, scrollLeft: initialView.scrollLeft });
@@ -106,7 +109,7 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   const moveNoticeRef = useRef<TaskMove | null>(null);
   const [undoingMove, setUndoingMove] = useState(false);
   const undoInProgress = useRef(false);
-  const [deletedTaskNotice, setDeletedTaskNotice] = useState<{ token: string; number?: number } | null>(null);
+  const [deletedTaskNotice, setDeletedTaskNotice] = useState<{ token: string; number?: number; releaseId?: string } | null>(null);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const deletionRunning = useRef(false);
   // Keep the current board for delayed edits, such as task panel autosaves:
@@ -123,7 +126,7 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
       if (e.defaultPrevented || e.isComposing || e.altKey || !(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "f") return;
       const target = e.target instanceof HTMLElement ? e.target : null;
       if (document.querySelector('[role="dialog"]') || target?.isContentEditable || target?.closest("input, textarea, select, .cm-editor")) return;
-      if (!boardRef.current || dragStart.current) return;
+      if (!boardRef.current || dragStart.current || deletionRunning.current) return;
       e.preventDefault();
       setSearchOpen(true);
     };
@@ -283,6 +286,18 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
     setAssigneeFilter(next);
     saveFilter(projectId, next, "assignee");
   }
+  function selectRelease(id: string | null) {
+    setSelectedRelease(id);
+    saveViewPreferences(projectDir, { releaseId: id });
+  }
+  function createRelease(name: string) {
+    const id = newId();
+    change((b) => ({ ...b, releases: [...(b.releases ?? []), { id, name }] }));
+    selectRelease(id);
+  }
+  function renameRelease(id: string, name: string) {
+    change((b) => ({ ...b, releases: (b.releases ?? []).map((release) => release.id === id ? { ...release, name } : release) }));
+  }
 
   if (error && !board) return <div className="error">{error}</div>;
   if (!board) return <div className="muted">{t("Loading…")}</div>;
@@ -295,6 +310,51 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
     done: sortTasksByNumber(board.done),
   };
   const labels = current.labels ?? [];
+  const releases = current.releases ?? [];
+  const releaseNames = new Map(releases.map(({ id, name }) => [id, name]));
+  const releaseId = selectedRelease && releaseNames.has(selectedRelease) ? selectedRelease : null;
+  const inRelease = (task: Task) => (task.releaseId ?? null) === releaseId;
+  const allTasks = COLUMNS.flatMap((column) => current[column.id]);
+
+  function confirmReleaseDeletion(release: Release) {
+    const tasks = allTasks.filter((task) => task.releaseId === release.id);
+    if (tasks.some((task) => task.claim)) {
+      setError(t("Release claimed tasks before deleting this release."));
+      return;
+    }
+    setReleaseToDelete({ release, tasks });
+  }
+
+  async function deleteRelease() {
+    if (!releaseToDelete || deletionRunning.current || undoInProgress.current || dragStart.current) return;
+    const { release, tasks } = releaseToDelete;
+    setReleaseToDelete(null);
+    deletionRunning.current = true;
+    setDeletionBusy(true);
+    pendingSaves.current += 1;
+    try {
+      await saveQueue.current;
+      if (saveFailed.current) throw new Error(t("Resolve the board save error first"));
+      const version = ++generation.current;
+      const fresh = await removeRelease(projectId, release, tasks);
+      if (generation.current === version && !dragStart.current) {
+        boardRef.current = fresh;
+        setBoard(fresh);
+        setError(null);
+        selectRelease(null);
+      }
+      const deletedIds = new Set(tasks.map((task) => task.id));
+      if (moveNoticeRef.current && deletedIds.has(moveNoticeRef.current.taskId)) showMoveNotice(null);
+      setArchivedNotice((id) => id && deletedIds.has(id) ? null : id);
+      setDeletedTaskNotice((notice) => notice?.releaseId === release.id ? null : notice);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      pendingSaves.current -= 1;
+      deletionRunning.current = false;
+      setDeletionBusy(false);
+    }
+  }
 
   // Exclude deleted labels from the filter. Match any selected label: show a task if it has at least one
   // selected label, or no labels when the unlabeled filter is selected.
@@ -308,7 +368,7 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   // Preserve access to tasks whose assignee is absent from the shared participant list.
   const assignees: Pick<Participant, "id" | "name">[] = [...participants];
   const assigneeIds = new Set(assignees.map((participant) => participant.id));
-  for (const task of COLUMNS.flatMap((column) => current[column.id])) {
+  for (const task of allTasks) {
     if (task.assigneeId && !assigneeIds.has(task.assigneeId)) {
       assigneeIds.add(task.assigneeId);
       assignees.push({ id: task.assigneeId, name: task.assigneeId });
@@ -331,8 +391,8 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   // Count tasks per label and unlabeled tasks for the filter and label dialog.
   const counts = new Map<string, number>();
   const assigneeCounts = new Map<string, number>();
-  for (const task of COLUMNS.flatMap((c) => current[c.id])) {
-    if (task.archived) continue;
+  for (const task of allTasks) {
+    if (task.archived || !inRelease(task)) continue;
     const own = task.labels ?? [];
     if (own.length === 0) counts.set(NO_LABEL, (counts.get(NO_LABEL) ?? 0) + 1);
     for (const id of own) counts.set(id, (counts.get(id) ?? 0) + 1);
@@ -342,11 +402,11 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
     }
   }
 
-  const archivedTasks = COLUMNS.flatMap((c) => current[c.id].filter((task) => task.archived).map((task) => ({ task, column: c.id, status: t(c.title) })))
+  const archivedTasks = COLUMNS.flatMap((c) => current[c.id].filter((task) => task.archived && inRelease(task)).map((task) => ({ task, column: c.id, status: t(c.title) })))
     .sort((a, b) => compareTaskNumbers(a.task, b.task));
   // Include archived tasks in label management because deleting a label affects all tasks.
   const labelUsage = new Map<string, number>();
-  for (const task of COLUMNS.flatMap((c) => current[c.id])) {
+  for (const task of allTasks) {
     for (const id of task.labels ?? []) labelUsage.set(id, (labelUsage.get(id) ?? 0) + 1);
   }
 
@@ -368,7 +428,8 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
   function addTask(column: ColumnId, title: string) {
     // Assign the active filter labels to new tasks so they do not immediately disappear from the board.
     const withLabels = [...activeFilter].filter((k) => k !== NO_LABEL);
-    const task: Task = withLabels.length ? { id: newId(), title, labels: withLabels } : { id: newId(), title };
+    const task: Task = { id: newId(), title, releaseId: releaseId ?? undefined };
+    if (withLabels.length) task.labels = withLabels;
     change((b) => ({ ...b, [column]: [...b[column], task] }));
   }
 
@@ -456,7 +517,7 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
           setBoard(deleted.board);
           setError(null);
         }
-        setDeletedTaskNotice({ token: deleted.token, number: deleted.number ?? undefined });
+        setDeletedTaskNotice({ token: deleted.token, number: deleted.number ?? undefined, releaseId: task.releaseId });
       } catch (e) { setError(String(e)); }
       finally {
         if (mutating) pendingSaves.current -= 1;
@@ -537,7 +598,7 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
     dragStart.current = null;
   }
 
-  const activeTask = activeId ? COLUMNS.flatMap((c) => current[c.id]).find((t) => t.id === activeId) : undefined;
+  const activeTask = activeId ? allTasks.find((t) => t.id === activeId) : undefined;
   const activeColumn = activeId ? findColumn(current, activeId) : null;
   const openColumn = openTaskId ? findColumn(current, openTaskId) : null;
   const openTask = openColumn ? current[openColumn].find((t) => t.id === openTaskId) : undefined;
@@ -601,6 +662,8 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
           </div>}
         </div>
         <div id={filtersId} className="board-filters" hidden={!filtersOpen}>
+          {filtersOpen && <ReleaseFilter releases={releases} selected={releaseId} disabled={activeId !== null}
+            onSelect={selectRelease} onCreate={createRelease} onRename={renameRelease} onDelete={confirmReleaseDeletion} />}
           <LabelFilter
             labels={labels}
             counts={counts}
@@ -644,8 +707,8 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
               id={column.id}
               title={t(column.title)}
               taskPrefix={current.taskPrefix}
-              tasks={current[column.id].filter(isVisible)}
-              total={current[column.id].filter((t) => !t.archived).length}
+              tasks={current[column.id].filter((task) => inRelease(task) && isVisible(task))}
+              total={current[column.id].filter((task) => inRelease(task) && !task.archived).length}
               labels={labels}
               participants={participants}
               onAdd={(title) => addTask(column.id, title)}
@@ -659,9 +722,15 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
       </DndContext>
 
       {searchOpen && <TaskSearch
-        tasks={COLUMNS.flatMap((column) => current[column.id].map((task) => ({ task, code: taskCode(current.taskPrefix, task.number), column: column.id, status: t(column.title) })))}
+        tasks={COLUMNS.flatMap((column) => current[column.id].map((task) => ({
+          task,
+          code: taskCode(current.taskPrefix, task.number),
+          column: column.id,
+          status: t(column.title),
+          releaseName: releases.length ? releaseNames.get(task.releaseId ?? "") ?? t("Original board") : undefined,
+        })))}
         onClose={() => setSearchOpen(false)}
-        onOpen={(id) => { setSearchOpen(false); setOpenTaskId(id); }} />}
+        onOpen={(task) => { selectRelease(task.releaseId ?? null); setSearchOpen(false); setOpenTaskId(task.id); }} />}
 
       {openTask && openColumn && (
         <TaskPanel
@@ -696,6 +765,13 @@ export default function Board({ projectId, projectDir, actionsTarget }: { projec
         />
       )}
 
+      {releaseToDelete && <ConfirmDialog title={t("Delete release “{name}”?", { name: releaseToDelete.release.name })}
+        confirmLabel={t("Delete release")} danger focusCancel onCancel={() => setReleaseToDelete(null)}
+        onConfirm={() => void trackSave(deleteRelease())}>
+        <p>{releaseToDelete.tasks.length
+          ? t("The release and all its tasks ({count}) will be permanently deleted, including archived tasks.", { count: releaseToDelete.tasks.length })
+          : t("The release will be permanently deleted.")}</p>
+      </ConfirmDialog>}
       {reloadConfirm && <ConfirmDialog title={t("Load current board?")} confirmLabel={t("Load")} danger
         onCancel={() => setReloadConfirm(false)} onConfirm={() => {
           setReloadConfirm(false);

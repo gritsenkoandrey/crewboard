@@ -16,6 +16,8 @@ export interface AgentClaim { assigneeId: string; sessionId: string; startedAt: 
 export interface TaskReport { authorId: string; sessionId: string; createdAt: number; text: string }
 
 export interface Task {
+  /** Absent for tasks on the original board. */
+  releaseId?: string;
   assigneeId?: string;
   acceptanceCriteria?: string;
   claim?: AgentClaim;
@@ -42,12 +44,18 @@ export interface Label {
   color: string;
 }
 
+export interface Release {
+  id: string;
+  name: string;
+}
+
 /** Board columns. Keys match the fields in board.json. */
 export type ColumnId = "todo" | "inProgress" | "done";
 
 export type Board = Record<ColumnId, Task[]> & {
   taskPrefix: string;
   nextTaskNumber: number;
+  releases?: Release[];
   /** Project labels. May be absent in older files. */
   labels?: Label[];
 };

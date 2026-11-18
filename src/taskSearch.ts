@@ -5,6 +5,7 @@ export interface SearchTask {
   code: string;
   column: ColumnId;
   status: string;
+  releaseName?: string;
 }
 
 function normalize(value: string): string {

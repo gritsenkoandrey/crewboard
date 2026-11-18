@@ -272,6 +272,31 @@ pub fn run(){
         assert!(f.run(&["tasks","claim","TT-3","--session","s3"]).is_err());
         assert!(f.run(&["tasks","claim","TT-3","--session","s3","--agent","nobody"]).is_err());
     }
+    #[test]
+    fn cli_workflow_preserves_release_membership_and_project_numbering() {
+        let f = Fixture::new();
+        f.run(&["tasks", "create", "--project", "test", "--title", "Original task"]).unwrap();
+        let dir = f.0.join("projects/test");
+        agents::transact(&dir, |v| {
+            v["releases"] = json!([{"id":"v2","name":"Version 2"}, {"id":"v3","name":"Empty release"}]);
+            v["todo"].as_array_mut().unwrap().push(json!({
+                "id":"v2-task","title":"Release task","number":2,"releaseId":"v2"
+            }));
+            v["nextTaskNumber"] = json!(3);
+            Ok(())
+        }).unwrap();
+
+        let claimed = f.run(&["tasks", "claim", "TT-2", "--project", "test", "--agent", "codex", "--session", "release-check"]).unwrap();
+        assert_eq!(claimed["task"]["releaseId"], "v2");
+        assert_eq!(claimed["status"], "inProgress");
+        let created = f.run(&["tasks", "create", "--project", "test", "--title", "Another original task"]).unwrap();
+        assert_eq!(created["code"], "TT-3");
+        assert!(created["task"]["releaseId"].is_null());
+        let listed = f.run(&["tasks", "list", "--project", "test"]).unwrap();
+        assert_eq!(listed.as_array().unwrap().len(), 3);
+        assert_eq!(serde_json::to_value(board::load(&dir).unwrap()).unwrap()["releases"][1]["id"], "v3");
+    }
+
     #[test] fn two_concurrent_sessions_only_one_claims_task(){
         let f=Fixture::new();f.run(&["tasks","create","--project","test","--title","Shared"]).unwrap();
         let barrier=std::sync::Arc::new(std::sync::Barrier::new(2));let mut handles=vec![];

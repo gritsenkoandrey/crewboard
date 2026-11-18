@@ -143,6 +143,7 @@ pub fn run() {
             projects::remove_cover,
             board::get_board,
             board::save_board,
+            board::delete_release,
             board::delete_task,
             board::restore_deleted_task,
             docs::link_document,

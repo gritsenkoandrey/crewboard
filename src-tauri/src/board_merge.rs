@@ -25,18 +25,18 @@ fn tasks(board: &Value) -> BTreeMap<String, (String,Value)> {
         result.insert(t["id"].as_str().unwrap_or_default().into(),(col.into(),t.clone()));
     }} result
 }
-fn merge_labels(base: &Value, local: &Value, remote: &Value) -> CmdResult<Value> {
+fn merge_by_id(base: &Value, local: &Value, remote: &Value, field: &str) -> CmdResult<Value> {
     fn by_id(v: &Value) -> BTreeMap<String,Value> { v.as_array().into_iter().flatten().map(|l|(l["id"].as_str().unwrap_or_default().into(),l.clone())).collect() }
-    let b = by_id(&base["labels"]); let l = by_id(&local["labels"]); let r = by_id(&remote["labels"]);
+    let b = by_id(base); let l = by_id(local); let r = by_id(remote);
     let ids: BTreeSet<_> = b.keys().chain(l.keys()).chain(r.keys()).collect();
     let mut items = BTreeMap::new();
     for id in ids {
-        let v = value(b.get(id).unwrap_or(&Value::Null),l.get(id).unwrap_or(&Value::Null),r.get(id).unwrap_or(&Value::Null),"labels")?;
+        let v = value(b.get(id).unwrap_or(&Value::Null),l.get(id).unwrap_or(&Value::Null),r.get(id).unwrap_or(&Value::Null),field)?;
         if !v.is_null() { items.insert(id.clone(),v); }
     }
     let mut ordered = Vec::new();
-    for label in remote["labels"].as_array().into_iter().flatten().chain(local["labels"].as_array().into_iter().flatten()) {
-        if let Some(v) = items.remove(label["id"].as_str().unwrap_or_default()) { ordered.push(v); }
+    for item in remote.as_array().into_iter().flatten().chain(local.as_array().into_iter().flatten()) {
+        if let Some(v) = items.remove(item["id"].as_str().unwrap_or_default()) { ordered.push(v); }
     }
     Ok(json!(ordered))
 }
@@ -89,7 +89,8 @@ pub(crate) fn merge(base: &Board, local: &Board, remote: &Board) -> CmdResult<Bo
         }
         r[col] = json!(list);
     }
-    r["labels"] = merge_labels(&b,&l,&r)?;
+    r["labels"] = merge_by_id(&b["labels"], &l["labels"], &r["labels"], "labels")?;
+    r["releases"] = merge_by_id(&b["releases"], &l["releases"], &r["releases"], "releases")?;
     r["taskPrefix"] = value(&b["taskPrefix"],&l["taskPrefix"],&r["taskPrefix"],"project prefix")?;
     r["nextTaskNumber"] = json!(next.max(l["nextTaskNumber"].as_u64().unwrap_or(1)));
     validate(serde_json::from_value(r).map_err(|e| e.to_string())?)
@@ -132,6 +133,42 @@ pub(crate) fn merge(base: &Board, local: &Board, remote: &Board) -> CmdResult<Bo
         assert_eq!(tasks.iter().find(|t|t["id"]=="gui").unwrap()["number"],3);
         assert_eq!(tasks.iter().find(|t|t["id"]=="agent").unwrap()["number"],2);
         assert_eq!(result["nextTaskNumber"],4);
+    }
+    #[test]
+    fn concurrent_release_creation_shares_the_project_counter_and_keeps_the_original_board() {
+        let base = base();
+        let mut local = base.clone();
+        local["releases"] = json!([{"id":"v2","name":"Version 2"}]);
+        local["todo"].as_array_mut().unwrap().push(json!({
+            "id":"local","title":"New release task","number":2,"releaseId":"v2"
+        }));
+        let mut remote = base.clone();
+        remote["releases"] = json!([{"id":"v3","name":"Version 3"}]);
+        remote["inProgress"] = json!([{"id":"remote","title":"Other release task","number":2,"releaseId":"v3"}]);
+        remote["nextTaskNumber"] = json!(3);
+
+        let result = serde_json::to_value(merge(&board(base.clone()), &board(local), &board(remote)).unwrap()).unwrap();
+        assert_eq!(result["releases"].as_array().unwrap().len(), 2);
+        assert_eq!(result["todo"][0], base["todo"][0]);
+        assert_eq!(result["todo"][1]["releaseId"], "v2");
+        assert_eq!(result["todo"][1]["number"], 3);
+        assert_eq!(result["inProgress"][0]["releaseId"], "v3");
+        assert_eq!(result["inProgress"][0]["number"], 2);
+        assert_eq!(result["nextTaskNumber"], 4);
+    }
+    #[test]
+    fn rename_release_preserves_its_identity_and_concurrent_task_changes() {
+        let mut base = base();
+        base["releases"] = json!([{"id":"v2","name":"Version 2"}]);
+        base["todo"][0]["releaseId"] = json!("v2");
+        let mut local = base.clone();
+        local["releases"][0]["name"] = json!("Spring release");
+        let mut remote = base.clone();
+        remote["todo"][0]["description"] = json!("Agent's concurrent edit");
+
+        let result = serde_json::to_value(merge(&board(base), &board(local), &board(remote.clone())).unwrap()).unwrap();
+        assert_eq!(result["releases"][0], json!({"id":"v2","name":"Spring release"}));
+        assert_eq!(result["todo"], remote["todo"]);
     }
     #[test] fn human_done_clears_session_but_keeps_results() {
         let mut base=base();let mut task=base["todo"].as_array_mut().unwrap().remove(0);

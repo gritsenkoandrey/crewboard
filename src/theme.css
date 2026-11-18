@@ -149,6 +149,11 @@ button:disabled { opacity: 0.45; cursor: default; }
 .board-filters .filter-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: start; column-gap: 6px; min-width: 0; font-size: 12px; }
 .filter-row-heading { display: flex; align-items: center; gap: 6px; min-height: 30px; }
 .filter-options { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-width: 0; }
+.release-filter { display: grid; gap: 6px; min-width: 0; }
+.release-filter-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.release-filter .inline-input { min-width: 0; width: min(100%, 220px); min-height: 30px; }
+.release-filter .small-btn { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; }
+.release-filter-error { flex-basis: 100%; }
 .filter-options .filter-chip { min-height: 30px; min-width: 0; max-width: 100%; }
 .filter-options .filter-all.active { color: var(--text); background: var(--hover); }
 .filter-choice-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

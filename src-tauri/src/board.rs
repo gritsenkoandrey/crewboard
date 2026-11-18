@@ -5,7 +5,7 @@
 use crate::projects::{project_dir, BOARD_FILE};
 use crate::{write_atomic, CmdResult};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::ErrorKind;
 use tauri::AppHandle;
@@ -38,12 +38,16 @@ const MAX_TITLE_CHARS: usize = 2000;
 const MAX_DESCRIPTION_CHARS: usize = 200_000;
 /// Must match LABEL_NAME_MAX in src/labels.ts.
 const MAX_LABEL_CHARS: usize = 40;
+/// Must match RELEASE_NAME_MAX in src/components/ReleaseFilter.tsx.
+const MAX_RELEASE_CHARS: usize = 80;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Task {
     id: String,
     title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    release_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     number: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -61,12 +65,24 @@ pub struct Task {
     extra: serde_json::Map<String, serde_json::Value>,
 }
 
+impl Task {
+    fn is_claimed(&self) -> bool {
+        self.extra.get("claim").is_some_and(serde_json::Value::is_object)
+    }
+}
+
 /// Project label. Its color is a UI palette key (`red`, `blue`, etc.), not an arbitrary hex value.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Label {
     id: String,
     name: String,
     color: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Release {
+    id: String,
+    name: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
@@ -84,6 +100,8 @@ pub struct Board {
     done: Vec<Task>,
     #[serde(default)]
     labels: Vec<Label>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    releases: Vec<Release>,
 }
 
 /// Defaults are applied only on board creation, never when loading existing boards.
@@ -108,6 +126,21 @@ impl Board {
 
 /// Validates the board before saving and removes references to nonexistent labels from tasks.
 pub(crate) fn validate(mut board: Board) -> CmdResult<Board> {
+    let mut release_ids = HashSet::new();
+    let mut release_names = HashSet::new();
+    for release in &board.releases {
+        let name = release.name.trim();
+        if name.is_empty() || name.chars().count() > MAX_RELEASE_CHARS {
+            return Err(format!("Release name must have between 1 and {MAX_RELEASE_CHARS} characters"));
+        }
+        if release.id.is_empty() || !release_ids.insert(release.id.as_str()) {
+            return Err("Invalid or duplicate release ID".into());
+        }
+        if !release_names.insert(name.to_lowercase()) {
+            return Err("A release with this name already exists".into());
+        }
+    }
+
     let mut label_ids = HashSet::new();
     for label in &board.labels {
         let name = label.name.trim();
@@ -124,6 +157,9 @@ pub(crate) fn validate(mut board: Board) -> CmdResult<Board> {
 
     let mut task_ids = HashSet::new();
     for task in board.tasks() {
+        if task.release_id.as_deref().is_some_and(|id| !release_ids.contains(id)) {
+            return Err("Task belongs to a release that does not exist".into());
+        }
         if task.title.trim().is_empty() {
             return Err("Task title cannot be empty".into());
         }
@@ -205,6 +241,40 @@ pub fn save_board(app: AppHandle, id: String, board: Board, base: Board) -> CmdR
     Ok(merged)
 }
 
+fn delete_release_from_board(dir: &Path, expected: &Release, expected_tasks: &[Task]) -> CmdResult<Board> {
+    let _lock = crate::storage::lock(dir, "board.lock")?;
+    let mut board = load(dir)?;
+    let position = board.releases.iter().position(|release| release.id == expected.id)
+        .ok_or("Release not found")?;
+    let changed = "The release changed before deletion. Review it and try again.";
+    if &board.releases[position] != expected {
+        return Err(changed.into());
+    }
+
+    let belongs_to_release = |task: &Task| task.release_id.as_deref() == Some(expected.id.as_str());
+    let current_tasks: HashMap<_, _> = board.tasks().filter(|task| belongs_to_release(task))
+        .map(|task| (&task.id, task)).collect();
+    if current_tasks.values().any(|task| task.is_claimed()) {
+        return Err("Release claimed tasks before deleting this release.".into());
+    }
+    let expected_tasks: HashMap<_, _> = expected_tasks.iter().map(|task| (&task.id, task)).collect();
+    if current_tasks != expected_tasks {
+        return Err(changed.into());
+    }
+
+    board.releases.remove(position);
+    for tasks in [&mut board.todo, &mut board.in_progress, &mut board.done] {
+        tasks.retain(|task| !belongs_to_release(task));
+    }
+    store(dir, &board)?;
+    Ok(board)
+}
+
+#[tauri::command]
+pub fn delete_release(app: AppHandle, id: String, release: Release, tasks: Vec<Task>) -> CmdResult<Board> {
+    delete_release_from_board(&project_dir(&app, &id)?, &release, &tasks)
+}
+
 fn delete_with_undo(dir: &Path, expected: &Task, state: &DeletedTaskState) -> CmdResult<DeletedTaskReceipt> {
     let mut undo = state.0.lock().map_err(|_| "Task undo state is unavailable")?;
     let _lock = crate::storage::lock(dir, "board.lock")?;
@@ -214,7 +284,7 @@ fn delete_with_undo(dir: &Path, expected: &Task, state: &DeletedTaskState) -> Cm
         .ok_or("Task not found")?;
     let tasks = match column { 0 => &mut board.todo, 1 => &mut board.in_progress, _ => &mut board.done };
     let current = &tasks[position];
-    if current.extra.get("claim").is_some_and(serde_json::Value::is_object) {
+    if current.is_claimed() {
         return Err("Release the task before deleting it".into());
     }
     if current != expected { return Err("The task changed before deletion. Reload it and try again.".into()); }
@@ -353,9 +423,12 @@ mod tests {
     struct DeletionFixture(PathBuf);
     impl DeletionFixture {
         fn new() -> Self {
+            Self::with_board(board(r#"{"taskPrefix":"TT","nextTaskNumber":10,"todo":[{"id":"a","number":8,"title":"Delete me","description":"Keep text","acceptanceCriteria":"Keep criteria","labels":["bug"],"reports":[{"text":"Keep report"}]}],"inProgress":[{"id":"b","number":9,"title":"Other task"}],"done":[],"labels":[{"id":"bug","name":"Bug","color":"red"}]}"#))
+        }
+
+        fn with_board(initial: Board) -> Self {
             let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target").join(format!(".task-delete-undo-test-{}", crate::agents::unique()));
             fs::create_dir_all(&dir).unwrap();
-            let initial = board(r#"{"taskPrefix":"TT","nextTaskNumber":10,"todo":[{"id":"a","number":8,"title":"Delete me","description":"Keep text","acceptanceCriteria":"Keep criteria","labels":["bug"],"reports":[{"text":"Keep report"}]}],"inProgress":[{"id":"b","number":9,"title":"Other task"}],"done":[],"labels":[{"id":"bug","name":"Bug","color":"red"}]}"#);
             store(&dir, &initial).unwrap();
             Self(dir)
         }
@@ -397,5 +470,48 @@ mod tests {
         assert!(restore_with_undo(&fixture.0, &deleted.token, &state).unwrap_err().contains("already exists"));
         current.done.clear(); store(&fixture.0, &current).unwrap();
         assert_eq!(restore_with_undo(&fixture.0, &deleted.token, &state).unwrap().todo[0].id, "a");
+    }
+
+    #[test]
+    fn deleting_release_removes_its_tasks_and_archive_without_reusing_numbers() {
+        let initial = board(r#"{
+            "taskPrefix":"TT","nextTaskNumber":12,
+            "releases":[{"id":"v2","name":"Version 2"},{"id":"v3","name":"Version 3"}],
+            "todo":[{"id":"original","title":"Original task","number":1},{"id":"new","title":"New","number":8,"releaseId":"v2"}],
+            "inProgress":[{"id":"active","title":"In progress","number":9,"releaseId":"v2"}],
+            "done":[{"id":"archive","title":"Archived","number":10,"releaseId":"v2","archived":true},
+                    {"id":"other","title":"Other release","number":11,"releaseId":"v3"}]
+        }"#);
+        let fixture = DeletionFixture::with_board(initial.clone());
+        let tasks = vec![initial.todo[1].clone(), initial.in_progress[0].clone(), initial.done[0].clone()];
+        let result = delete_release_from_board(&fixture.0, &initial.releases[0], &tasks).unwrap();
+
+        assert_eq!(result.releases, initial.releases[1..]);
+        assert_eq!(result.todo, initial.todo[..1]);
+        assert!(result.in_progress.is_empty());
+        assert_eq!(result.done, initial.done[1..]);
+        assert_eq!(result.next_task_number, 12);
+        assert_eq!(load(&fixture.0).unwrap(), result);
+    }
+
+    #[test]
+    fn deleting_release_rejects_tasks_added_or_claimed_after_confirmation() {
+        let mut initial = board(r#"{
+            "taskPrefix":"TT","nextTaskNumber":3,
+            "releases":[{"id":"v2","name":"Version 2"}],
+            "todo":[{"id":"a","title":"Task","number":2,"releaseId":"v2"}]
+        }"#);
+        let fixture = DeletionFixture::with_board(initial.clone());
+        let release = initial.releases[0].clone();
+        assert!(delete_release_from_board(&fixture.0, &release, &[]).unwrap_err().contains("changed"));
+        assert_eq!(load(&fixture.0).unwrap(), initial);
+
+        let expected = initial.todo.clone();
+        let mut claimed = initial.todo.remove(0);
+        claimed.extra.insert("claim".into(), serde_json::json!({"sessionId":"active"}));
+        initial.in_progress.push(claimed);
+        store(&fixture.0, &initial).unwrap();
+        assert!(delete_release_from_board(&fixture.0, &release, &expected).unwrap_err().contains("claimed"));
+        assert_eq!(load(&fixture.0).unwrap(), initial);
     }
 }

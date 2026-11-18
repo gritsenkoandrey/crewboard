@@ -1,11 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { searchTasks, type SearchTask } from "../taskSearch";
+import type { Task } from "../types";
 import Icon from "./Icon";
 
 interface Props {
   tasks: SearchTask[];
-  onOpen: (id: string) => void;
+  onOpen: (task: Task) => void;
   onClose: () => void;
 }
 
@@ -53,13 +54,13 @@ export default function TaskSearch({ tasks, onOpen, onClose }: Props) {
           if (e.nativeEvent.isComposing) return;
           if (e.key === "ArrowDown") { e.preventDefault(); setActiveIndex(results.length ? (selected + 1) % results.length : 0); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIndex(results.length ? (selected - 1 + results.length) % results.length : 0); }
-          else if (e.key === "Enter" && selected >= 0) { e.preventDefault(); onOpen(results[selected].task.id); }
+          else if (e.key === "Enter" && selected >= 0) { e.preventDefault(); onOpen(results[selected].task); }
         }} />
       <p className="muted task-search-hint">{t("Search all project tasks, including archived tasks and tasks hidden by filters.")}</p>
       <div ref={list} id={listId} className="task-search-results" role="listbox" aria-label={t("Search results")}>
-        {results.map(({ task, code, status }, index) => <button key={task.id} id={`${listId}-${task.id}`} type="button" role="option" tabIndex={-1}
-          className="task-search-result" aria-selected={index === selected} onMouseDown={(e) => e.preventDefault()} onClick={() => onOpen(task.id)}>
-          <span className="task-search-result-meta"><span className="task-code">{code}</span><span>{status}</span>{task.archived && <span className="task-search-archived"><Icon name="archive" />{t("Archive")}</span>}</span>
+        {results.map(({ task, code, status, releaseName }, index) => <button key={task.id} id={`${listId}-${task.id}`} type="button" role="option" tabIndex={-1}
+          className="task-search-result" aria-selected={index === selected} onMouseDown={(e) => e.preventDefault()} onClick={() => onOpen(task)}>
+          <span className="task-search-result-meta"><span className="task-code">{code}</span><span>{status}</span>{releaseName && <span>{releaseName}</span>}{task.archived && <span className="task-search-archived"><Icon name="archive" />{t("Archive")}</span>}</span>
           <span className="task-search-result-title">{task.title}</span>
         </button>)}
       </div>

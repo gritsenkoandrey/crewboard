@@ -7,7 +7,7 @@ const { outputText } = ts.transpileModule(readFileSync(new URL("../src/viewPrefe
   compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
 });
 const { loadViewPreferences, saveViewPreferences } = await import("data:text/javascript;base64," + Buffer.from(outputText).toString("base64"));
-const defaults = { filtersOpen: false, scrollTop: 0, scrollLeft: 0, descriptionSize: null };
+const defaults = { filtersOpen: false, scrollTop: 0, scrollLeft: 0, descriptionSize: null, releaseId: null };
 
 function withStorage(run) {
   const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
@@ -37,7 +37,7 @@ test("independent updates preserve the latest scroll, filter disclosure and desc
   saveViewPreferences("project", { filtersOpen: true, scrollTop: 310 });
   saveViewPreferences("project", { descriptionSize: 65 });
   saveViewPreferences("project", { scrollTop: 500.5, scrollLeft: 72 });
-  assert.deepEqual(loadViewPreferences("project"), { filtersOpen: true, scrollTop: 500.5, scrollLeft: 72, descriptionSize: 65 });
+  assert.deepEqual(loadViewPreferences("project"), { ...defaults, filtersOpen: true, scrollTop: 500.5, scrollLeft: 72, descriptionSize: 65 });
   saveViewPreferences("project", { filtersOpen: false });
   saveViewPreferences("project", { descriptionSize: null });
   assert.deepEqual(loadViewPreferences("project"), { ...defaults, scrollTop: 500.5, scrollLeft: 72 });
@@ -46,11 +46,14 @@ test("independent updates preserve the latest scroll, filter disclosure and desc
 test("projects and data folders with identical project IDs retain separate views", () => withStorage(() => {
   const first = "D:/DataA/projects/task-track";
   const second = "D:/DataB/projects/task-track";
-  saveViewPreferences(first, { filtersOpen: true, scrollTop: 600, descriptionSize: 70 });
+  saveViewPreferences(first, { filtersOpen: true, scrollTop: 600, descriptionSize: 70, releaseId: "release-a" });
   saveViewPreferences(second, { scrollLeft: 45, descriptionSize: 30 });
-  assert.deepEqual(loadViewPreferences(first), { filtersOpen: true, scrollTop: 600, scrollLeft: 0, descriptionSize: 70 });
-  assert.deepEqual(loadViewPreferences(second), { filtersOpen: false, scrollTop: 0, scrollLeft: 45, descriptionSize: 30 });
+  saveViewPreferences(first, { scrollTop: 620 });
+  assert.deepEqual(loadViewPreferences(first), { ...defaults, filtersOpen: true, scrollTop: 620, descriptionSize: 70, releaseId: "release-a" });
+  assert.deepEqual(loadViewPreferences(second), { ...defaults, scrollLeft: 45, descriptionSize: 30 });
   assert.deepEqual(loadViewPreferences("D:/DataA/projects/another"), defaults);
+  saveViewPreferences(first, { releaseId: null });
+  assert.equal(loadViewPreferences(first).releaseId, null);
 }));
 
 test("description-size endpoints and reset to automatic layout survive saving", () => withStorage(() => {

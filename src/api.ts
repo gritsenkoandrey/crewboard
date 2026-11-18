@@ -1,7 +1,7 @@
 import { translate as t } from "./i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Board, Project, Participant, Task } from "./types";
+import type { Board, Project, Participant, Release, Task } from "./types";
 
 export interface DataDirInfo {
   /** Path from settings, if a folder was previously selected. */
@@ -57,6 +57,10 @@ export function getBoard(id: string): Promise<Board> {
 
 export function saveBoard(id: string, board: Board, base: Board): Promise<Board> {
   return invoke("save_board", { id, board, base });
+}
+
+export function deleteRelease(id: string, release: Release, tasks: Task[]): Promise<Board> {
+  return invoke("delete_release", { id, release, tasks });
 }
 
 export interface ProjectDocument { id: string; name: string; file: string; externalPath?: string }
