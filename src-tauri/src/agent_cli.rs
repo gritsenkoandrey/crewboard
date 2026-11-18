@@ -20,6 +20,7 @@ const HELP:&str = r#"Crewboard agent CLI (JSON output)
 claim returns a token. Keep it for report/ask/submit/release. --force is manual recovery.
 claim without --agent uses the task's assignee; an unassigned task needs --agent.
 --file - (and --description-file -/--criteria-file -) reads UTF-8 text from stdin; no temporary file needed.
+--criteria-file appends its text to the description for compatibility with existing commands.
 No agent is launched by these commands. submit never moves a task to Done.
 "#;
 #[derive(Debug)]
@@ -90,7 +91,9 @@ fn read_text(args:&Args,key:&str)->CmdResult<String>{
 fn decode_text(bytes:Vec<u8>,key:&str)->CmdResult<String>{
     let bytes=bytes.strip_prefix(b"\xEF\xBB\xBF").map(<[u8]>::to_vec).unwrap_or(bytes);
     let text=String::from_utf8(bytes).map_err(|_|format!("Text for --{key} must be UTF-8"))?;
-    if text.chars().count()>200_000{return Err("Text exceeds 200000 characters".into());} Ok(text)
+    let max_chars = if key == "description-file" { board::MAX_DESCRIPTION_CHARS } else { 200_000 };
+    if text.chars().count() > max_chars { return Err(format!("Text exceeds {max_chars} characters")); }
+    Ok(text)
 }
 fn owner(task:&Value,args:&Args)->CmdResult<()>{
     if !task["claim"].is_object() || task["claim"]["token"]!=args.need("token")? || task["claim"]["sessionId"]!=args.need("session")? {
@@ -135,7 +138,7 @@ pub fn execute(arguments:Vec<String>)->Result<Value,String>{
         let title=args.need("title")?.trim().to_string();
         if args.get("description-file")==Some("-") && args.get("criteria-file")==Some("-"){return Err("stdin (-) can only be used for one file".into());}
         let description=if args.get("description-file").is_some(){read_text(&args,"description-file")?}else{String::new()};
-        let criteria=if args.get("criteria-file").is_some(){read_text(&args,"criteria-file")?}else{String::new()};
+        let criteria = args.get("criteria-file").map(|_| read_text(&args, "criteria-file")).transpose()?;
         if let Some(id)=args.get("assignee"){agents::participant(&root,id)?;}
         let task_id=format!("agent-{}",agents::unique());
         let result=agents::transact(&dir,|v|{
@@ -144,7 +147,8 @@ pub fn execute(arguments:Vec<String>)->Result<Value,String>{
             if let Some(label)=args.get("label"){
                 let id=v["labels"].as_array().unwrap().iter().find(|l|l["id"]==label || l["name"].as_str().is_some_and(|s|s.eq_ignore_ascii_case(label))).ok_or("Label not found")?["id"].clone(); labels.push(id);
             }
-            let mut task=json!({"id":task_id,"title":title,"number":number,"description":description,"acceptanceCriteria":criteria,"labels":labels,"updatedAt":agents::now()});
+            let mut task=json!({"id":task_id,"title":title,"number":number,"description":description,"labels":labels,"updatedAt":agents::now()});
+            if let Some(criteria) = criteria { task["acceptanceCriteria"] = json!(criteria); }
             if let Some(id)=args.get("assignee"){task["assigneeId"]=json!(id);}
             v["todo"].as_array_mut().unwrap().push(task);Ok(())
         })?;
@@ -257,6 +261,22 @@ pub fn run(){
     #[test] fn decode_text_handles_bom_and_rejects_non_utf8(){
         assert_eq!(decode_text("\u{FEFF}Отчёт".as_bytes().to_vec(),"file").unwrap(),"Отчёт");
         assert!(decode_text(vec![0xCE,0xF2,0xF7],"file").unwrap_err().contains("UTF-8"));
+    }
+    #[test]
+    fn create_appends_legacy_criteria_file_to_description() {
+        let f = Fixture::new();
+        let description = f.0.join("description.md");
+        let criteria = f.0.join("criteria.md");
+        fs::write(&description, "Original").unwrap();
+        fs::write(&criteria, "- Check this").unwrap();
+        let created = f.run(&[
+            "tasks", "create", "--project", "test", "--title", "Task",
+            "--description-file", description.to_str().unwrap(),
+            "--criteria-file", criteria.to_str().unwrap(),
+        ]).unwrap();
+        assert_eq!(created["task"]["description"], "Original\n\n---\n\n- Check this");
+        assert!(created["task"].get("acceptanceCriteria").is_none());
+        assert_eq!(f.run(&["tasks", "show", "TT-1"]).unwrap(), created);
     }
     #[test] fn claim_defaults_to_assignee(){
         let f=Fixture::new();

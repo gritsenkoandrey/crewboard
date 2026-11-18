@@ -34,8 +34,9 @@ pub struct DeletedTaskReceipt {
 
 /// Must match TASK_TITLE_MAX in src/components/Board.tsx.
 const MAX_TITLE_CHARS: usize = 2000;
-/// Guard against accidentally pasting huge text; leave ample room for normal descriptions.
-const MAX_DESCRIPTION_CHARS: usize = 200_000;
+const CRITERIA_SEPARATOR: &str = "\n\n---\n\n";
+/// Preserve both legacy fields at their former 200,000-character limits.
+pub(crate) const MAX_DESCRIPTION_CHARS: usize = 400_000 + CRITERIA_SEPARATOR.len();
 /// Must match LABEL_NAME_MAX in src/labels.ts.
 const MAX_LABEL_CHARS: usize = 40;
 /// Must match RELEASE_NAME_MAX in src/components/ReleaseFilter.tsx.
@@ -68,6 +69,21 @@ pub struct Task {
 impl Task {
     fn is_claimed(&self) -> bool {
         self.extra.get("claim").is_some_and(serde_json::Value::is_object)
+    }
+
+    fn merge_legacy_criteria(&mut self) {
+        let Some(criteria) = self.extra.get("acceptanceCriteria").and_then(serde_json::Value::as_str) else {
+            return;
+        };
+        if !criteria.trim().is_empty() {
+            if self.description.trim().is_empty() {
+                self.description.clear();
+            } else {
+                self.description.push_str(CRITERIA_SEPARATOR);
+            }
+            self.description.push_str(criteria);
+        }
+        self.extra.remove("acceptanceCriteria");
     }
 }
 
@@ -126,6 +142,9 @@ impl Board {
 
 /// Validates the board before saving and removes references to nonexistent labels from tasks.
 pub(crate) fn validate(mut board: Board) -> CmdResult<Board> {
+    for task in board.tasks_mut() {
+        task.merge_legacy_criteria();
+    }
     let mut release_ids = HashSet::new();
     let mut release_names = HashSet::new();
     for release in &board.releases {
@@ -168,9 +187,6 @@ pub(crate) fn validate(mut board: Board) -> CmdResult<Board> {
         }
         if task.description.chars().count() > MAX_DESCRIPTION_CHARS {
             return Err(format!("Task description exceeds {MAX_DESCRIPTION_CHARS} characters"));
-        }
-        if task.extra.get("acceptanceCriteria").and_then(serde_json::Value::as_str).is_some_and(|v| v.chars().count() > MAX_DESCRIPTION_CHARS) {
-            return Err("Acceptance criteria exceed 200000 characters".into());
         }
         if !task_ids.insert(task.id.clone()) {
             return Err(format!("Duplicate task ID: {}", task.id));
@@ -218,6 +234,9 @@ pub(crate) fn load(dir: &Path) -> CmdResult<Board> {
     let meta: serde_json::Value = fs::read_to_string(dir.join("project.json")).ok()
         .and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     initialize_metadata(&mut board, meta["name"].as_str().unwrap_or("Project"));
+    for task in board.tasks_mut() {
+        task.merge_legacy_criteria();
+    }
     if serde_json::to_string(&board).map_err(|e| e.to_string())? != original { store(dir, &board)?; }
     Ok(board)
 }
@@ -439,6 +458,27 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
+    #[test]
+    fn loading_legacy_criteria_moves_them_to_descriptions_once() {
+        let initial = board(r#"{
+            "taskPrefix":"TT","nextTaskNumber":4,
+            "todo":[{"id":"a","number":1,"title":"Task","updatedAt":123,"description":"Original","acceptanceCriteria":"- Check this"}],
+            "inProgress":[{"id":"b","number":2,"title":"Empty criteria","description":"Keep","acceptanceCriteria":" "}],
+            "done":[{"id":"c","number":3,"title":"Archived","archived":true,"acceptanceCriteria":"Only criteria"}]
+        }"#);
+        let fixture = DeletionFixture::with_board(initial);
+        let migrated = load(&fixture.0).unwrap();
+        assert_eq!(migrated.todo[0].description, "Original\n\n---\n\n- Check this");
+        assert_eq!(migrated.todo[0].updated_at, Some(123));
+        assert_eq!(migrated.in_progress[0].description, "Keep");
+        assert_eq!(migrated.done[0].description, "Only criteria");
+        assert!(migrated.done[0].archived);
+        assert!(migrated.tasks().all(|task| !task.extra.contains_key("acceptanceCriteria")));
+        let stored: Board = serde_json::from_str(&fs::read_to_string(fixture.0.join(BOARD_FILE)).unwrap()).unwrap();
+        assert_eq!(stored, migrated);
+        assert_eq!(load(&fixture.0).unwrap(), migrated);
+    }
+
     #[test] fn deleted_task_undo_restores_identity_and_content_without_reverting_other_edits() {
         let fixture = DeletionFixture::new(); let state = DeletedTaskState::default();
         let expected = load(&fixture.0).unwrap().todo[0].clone();

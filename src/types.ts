@@ -19,7 +19,6 @@ export interface Task {
   /** Absent for tasks on the original board. */
   releaseId?: string;
   assigneeId?: string;
-  acceptanceCriteria?: string;
   claim?: AgentClaim;
   readyForReview?: boolean;
   question?: string;

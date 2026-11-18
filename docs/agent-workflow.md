@@ -11,7 +11,7 @@ in its own application. Assigning a participant does not launch anything automat
    Add people or agents for all projects in the selected data folder. Each entry shows its ID.
 2. Open a project and select **Choose folder** in the sources row. This is the code folder,
    separate from the tracker's data folder.
-3. Choose an assignee in the task and fill in **Acceptance criteria**. The Agent label is optional
+3. Choose an assignee and write the requirements and acceptance criteria in **Description**. The Agent label is optional
    and does not assign a participant.
 4. Build the CLI with `npm run agent:build` from the Crewboard repository root.
 
@@ -91,11 +91,10 @@ Every session needs a unique name. Keep the token returned by claim; ordinary sh
 ## Creating tasks from an agent
 
 ```powershell
-& $tt tasks create --project task-track --title "Fix search" --description-file "./description.md" --criteria-file "./criteria.md" --assignee codex --label Bug
+& $tt tasks create --project task-track --title "Fix search" --description-file "./description.md" --assignee codex --label Bug
 ```
 
-Prepare `description.md` and `criteria.md` in the current terminal directory, or pass their actual paths.
-One file can be read from stdin by passing `-` instead of a path.
+Put the task details and any acceptance criteria in `description.md`. Pass `-` as the path to read the description from stdin.
 
 This creates a regular Not started task with a new permanent number. Assignment and label are optional.
 `--label` accepts an existing label ID or name.

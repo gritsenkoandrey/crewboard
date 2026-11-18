@@ -11,7 +11,6 @@ export function stampBoard(previous: Board, next: Board, now = Date.now()): Boar
       const before = old.get(task.id);
       const changed = !before || Boolean(before.task.archived) !== Boolean(task.archived) || before.column !== column || before.task.title !== task.title
         || (before.task.assigneeId ?? "") !== (task.assigneeId ?? "")
-        || (before.task.acceptanceCriteria ?? "") !== (task.acceptanceCriteria ?? "")
         || (before.task.description ?? "") !== (task.description ?? "")
         || JSON.stringify([...(before.task.labels ?? [])].sort()) !== JSON.stringify([...(task.labels ?? [])].sort());
       return { ...task, number: before?.task.number ?? task.number ?? number++, updatedAt: changed ? now : before?.task.updatedAt };

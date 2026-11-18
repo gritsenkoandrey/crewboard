@@ -12,7 +12,7 @@ A dedicated CLI lets local agents claim tasks and submit work reports.
 - A **Not started → In progress → Done** Kanban board with drag-and-drop status changes and automatic ascending task-number ordering.
 - Undo the latest status move from its notification, including moves made by dragging or from the task panel. Current task edits are preserved.
 - Deleting a task or project also shows an Undo notification. Tasks retain their original code and content; projects are restored from the Windows Recycle Bin.
-- Permanent task codes such as `TT-24`, update timestamps, Markdown descriptions, and acceptance criteria.
+- Permanent task codes such as `TT-24`, update timestamps, and Markdown descriptions.
 - Task search from the board with **Ctrl+F**: find by code or title and open with Enter or a click, including archived tasks and tasks hidden by filters.
 - Colored labels and filters matching any selected label or unlabeled tasks.
 - Per-project view preferences: description height, expanded filters, and board scroll position survive navigation and app restarts.
@@ -75,7 +75,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked
 ## First steps
 
 1. Choose a data folder and create a project.
-2. Add tasks on the Board tab, then set labels, assignees, and acceptance criteria.
+2. Add tasks on the Board tab, then write descriptions and set labels and assignees.
 3. Use the add-document button to create a document or link an existing Markdown file.
 4. For agent work, select the project's source code folder and follow the [CLI guide](docs/agent-workflow.md).
 

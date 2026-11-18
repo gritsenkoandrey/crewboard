@@ -286,9 +286,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .agent-review { background:var(--active-bg); color:var(--accent-text); }
 .agent-question { background:var(--warning-bg); white-space:pre-wrap; }
 .agent-question p { margin:4px 0 0; }
-.agent-criteria, .agent-reports { font-size:12px; flex-shrink:0; }
-.agent-criteria summary, .agent-reports summary { color:var(--muted); cursor:pointer; padding:4px 0; }
-.agent-criteria textarea { margin-top:6px; width:100%; resize:vertical; max-height:180px; padding:8px; font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:4px; }
+.agent-reports { font-size:12px; flex-shrink:0; }
+.agent-reports summary { color:var(--muted); cursor:pointer; padding:4px 0; }
 .agent-report-list article { padding:10px 0; border-bottom:1px solid var(--border); }
 .agent-report-list .markdown { padding:8px 0; font-size:13px; }
 .task-agent-badges { display:flex; flex-wrap:wrap; gap:4px; font-size:10px; color:var(--muted); }

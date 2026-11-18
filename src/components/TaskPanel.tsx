@@ -9,7 +9,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import LabelPicker from "./LabelPicker";
 import MarkdownEditor from "./MarkdownEditor";
 
-export type TaskPatch = Partial<Pick<Task, "title" | "description" | "labels" | "assigneeId" | "acceptanceCriteria">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "description" | "labels" | "assigneeId">>;
 
 interface Props {
   task: Task;
@@ -68,7 +68,6 @@ export default function TaskPanel({
     if (panel && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
   }, []);
   const [title, setTitle] = useState(task.title);
-  const [criteria, setCriteria] = useState(task.acceptanceCriteria ?? "");
   const [descriptionVersion, setDescriptionVersion] = useState(0);
   const [releaseConfirm, setReleaseConfirm] = useState(false);
   const [description, setDescription] = useState(task.description ?? "");
@@ -127,7 +126,6 @@ export default function TaskPanel({
   onChangeRef.current = onChange;
 
   useEffect(() => { if (!("title" in pending.current)) setTitle(task.title); }, [task.title]);
-  useEffect(() => { if (!("acceptanceCriteria" in pending.current)) setCriteria(task.acceptanceCriteria ?? ""); }, [task.acceptanceCriteria]);
   useEffect(() => {
     if (!("description" in pending.current) && descriptionRef.current !== (task.description ?? "")) { setDescription(task.description ?? ""); setDescriptionVersion((v) => v + 1); }
   }, [task.description]);
@@ -267,12 +265,7 @@ export default function TaskPanel({
                 onCreate={onCreateLabel}
               />
 
-              <details className="agent-criteria">
-                <summary>{t("Acceptance criteria")}{criteria ? t(" · filled in") : ""}</summary>
-                <textarea aria-label={t("Acceptance criteria")} placeholder={t("What should work and how to verify it")} rows={3} value={criteria}
-                  onChange={(e) => { const value = e.target.value; setCriteria(value); pending.current.acceptanceCriteria = value; window.clearTimeout(timer.current); timer.current = window.setTimeout(flush, AUTOSAVE_MS); }} onBlur={flush} />
-              </details>
-              {(task.reports?.length ?? 0) > 0 && <details className="agent-reports">
+              {(task.reports?.length ?? 0) > 0 && <details className="agent-reports" open>
                 <summary>{t("Work reports · {count}", { count: task.reports!.length })}</summary>
                 <div className="agent-report-list">{[...task.reports!].reverse().map((report, index) => (
                   <article key={report.createdAt + ":" + index}>
