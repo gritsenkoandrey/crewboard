@@ -444,6 +444,12 @@ body {
   touch-action: none;
 }
 
+@media (hover: hover) {
+  .project-grid:not(.project-list-layout) > .project-card:not(:hover) > .project-drag-handle:not(:focus-visible) {
+    opacity: 0;
+  }
+}
+
 .project-card:hover .card-menu-btn,
 .card-menu-btn:focus-visible {
   opacity: 1;
