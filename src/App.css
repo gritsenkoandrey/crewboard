@@ -278,10 +278,23 @@ body {
   margin: 0 auto;
 }
 
+.project-library-list {
+  max-width: 600px;
+}
+
 .project-library-toolbar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 8px;
   margin-bottom: 12px;
+}
+
+.project-library-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
 }
 
 .project-grid {
@@ -472,39 +485,33 @@ body {
 .project-list-layout .project-card {
   flex-direction: row;
   align-items: center;
-  min-height: 64px;
+  min-height: 60px;
 }
 
 .project-list-layout .project-card .cover {
-  flex: 0 0 100px;
-  align-self: stretch;
-  width: 100px;
-  height: auto;
-  min-height: 62px;
-  border-radius: 7px 0 0 7px;
-}
-
-.project-list-layout .project-card img.cover {
-  height: 62px;
-  align-self: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  margin-left: 8px;
+  border-radius: 5px;
 }
 
 .project-list-layout .cover-monogram {
   right: 3px;
-  bottom: -9px;
-  font-size: 48px;
+  bottom: 1px;
+  font-size: 25px;
 }
 
 .project-list-layout .cover-placeholder::before {
-  top: 12px;
-  left: 10px;
-  width: 18px;
+  top: 8px;
+  left: 6px;
+  width: 12px;
   height: 2px;
 }
 
 .project-list-layout .project-info {
   flex: 1;
-  padding-right: 80px;
+  padding: 8px 80px 8px 10px;
 }
 
 .project-list-layout .project-drag-handle,

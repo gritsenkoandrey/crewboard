@@ -64,6 +64,7 @@ export default function ProjectList({
   const [deleting, setDeleting] = useState<Project | null>(null);
   const [view, setView] = useState<ProjectView>(loadView);
   const [draggedId, setDraggedId] = useState<UniqueIdentifier | null>(null);
+  const listView = view === "list";
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -94,8 +95,14 @@ export default function ProjectList({
   }
 
   return (
-    <div className="project-library">
+    <div className={`project-library${listView ? " project-library-list" : ""}`}>
       <div className="project-library-toolbar">
+        {listView && !creating && (
+          <button type="button" className="btn project-library-create" onClick={() => setCreating(true)}>
+            <Icon name="plus" />
+            {t("New project")}
+          </button>
+        )}
         <div className="segmented" role="group" aria-label={t("Project view")}>
           <button type="button" className={view === "grid" ? "active" : ""} aria-pressed={view === "grid"} onClick={() => switchView("grid")}>{t("Tiles")}</button>
           <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} onClick={() => switchView("list")}>{t("List")}</button>
@@ -122,8 +129,8 @@ export default function ProjectList({
         onDragCancel={() => setDraggedId(null)}
         onDragEnd={onDragEnd}
       >
-        <SortableContext items={projects.map((project) => project.id)} strategy={view === "grid" ? rectSortingStrategy : verticalListSortingStrategy}>
-          <div className={`project-grid${view === "list" ? " project-list-layout" : ""}`}>
+        <SortableContext items={projects.map((project) => project.id)} strategy={listView ? verticalListSortingStrategy : rectSortingStrategy}>
+          <div className={`project-grid${listView ? " project-list-layout" : ""}`}>
             {creating ? (
               <div className="project-card new-card editing">
                 <InlineInput
@@ -136,7 +143,7 @@ export default function ProjectList({
                 />
                 <span className="muted hint">{t("Enter to create, Esc to cancel")}</span>
               </div>
-            ) : (
+            ) : !listView && (
               <button className="project-card new-card" onClick={() => setCreating(true)}>
                 <span className="plus">+</span>
                 {t("New project")}</button>
@@ -217,8 +224,8 @@ export default function ProjectList({
         </SortableContext>
         {createPortal(
           <DragOverlay
-            className={`project-drag-preview${view === "list" ? " project-list-layout" : ""}`}
-            modifiers={view === "list" ? [containProjectPreview, keepRowAligned] : [containProjectPreview]}
+            className={`project-drag-preview${listView ? " project-list-layout" : ""}`}
+            modifiers={listView ? [containProjectPreview, keepRowAligned] : [containProjectPreview]}
             dropAnimation={null}
           >
             {draggedProject && (
