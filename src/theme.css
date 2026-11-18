@@ -247,7 +247,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .document-tab.dragging { position: relative; z-index: 1; opacity: .7; background: var(--active-bg); }
 .document-tabs .document-tab-name:not(:disabled) { cursor: grab; touch-action: none; }
 .document-tabs .document-tab.dragging .document-tab-name { cursor: grabbing; }
-.document-tabs .document-tab-name { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 5px; }
+.document-tabs .document-tab-name { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.document-tabs .document-tab-name.active { padding-right: 5px; }
 .document-tabs .document-tab-menu { display: inline-flex; align-items: center; justify-content: center; width: 26px; padding: 0; color: var(--muted); }
 .document-tab.active .document-tab-menu { border-bottom-color: var(--accent); }
 .document-add { color: var(--muted); }

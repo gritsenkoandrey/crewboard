@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::sync::{Arc, Mutex};
 
@@ -40,6 +40,7 @@ fn same_path(left: &Path, right: &Path) -> bool {
 }
 
 const PROJECTS_DIR: &str = "projects";
+const ORDER_FILE: &str = "order.json";
 const META_FILE: &str = "project.json";
 pub(crate) const BOARD_FILE: &str = "board.json";
 const MAX_NAME_CHARS: usize = 200;
@@ -175,20 +176,62 @@ fn load_project(dir: &Path) -> Project {
     to_project(dir, meta)
 }
 
-#[tauri::command]
-pub fn list_projects(app: AppHandle) -> CmdResult<Vec<Project>> {
-    let root = projects_root(&data_dir(&app)?);
-    fs::create_dir_all(&root).map_err(|e| format!("Failed to create {}: {e}", root.display()))?;
-    let entries = fs::read_dir(&root).map_err(|e| format!("Failed to read {}: {e}", root.display()))?;
+fn list_projects_in(root: &Path) -> CmdResult<Vec<Project>> {
+    fs::create_dir_all(root).map_err(|e| format!("Failed to create {}: {e}", root.display()))?;
+    let entries = fs::read_dir(root).map_err(|e| format!("Failed to read {}: {e}", root.display()))?;
     let mut projects: Vec<Project> = entries
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
         .map(|entry| load_project(&entry.path()))
         .collect();
-    // Sort newest first, breaking ties alphabetically.
-    projects.sort_by(|a, b| b.created_at.cmp(&a.created_at).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    // A folder ID can be reused after deletion. Its creation time distinguishes the new project.
+    let path = root.join(ORDER_FILE);
+    let order: Vec<(String, u64)> = match fs::read_to_string(&path) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_default(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(format!("Failed to read {}: {e}", path.display())),
+    };
+    let positions: HashMap<_, _> = order.iter().enumerate()
+        .map(|(index, (id, created_at))| ((id.as_str(), *created_at), index))
+        .collect();
+    // Projects outside the saved order keep the default newest-first order above it.
+    projects.sort_by_cached_key(|project| (
+        positions.get(&(project.id.as_str(), project.created_at)).copied(),
+        std::cmp::Reverse(project.created_at),
+        project.name.to_lowercase(),
+        project.id.clone(),
+    ));
     Ok(projects)
+}
+
+#[tauri::command]
+pub fn list_projects(app: AppHandle) -> CmdResult<Vec<Project>> {
+    list_projects_in(&projects_root(&data_dir(&app)?))
+}
+
+fn move_project_in(root: &Path, id: &str, target_id: &str, before: bool) -> CmdResult<Vec<String>> {
+    let _lock = crate::storage::lock(root, "order.lock")?;
+    let mut projects = list_projects_in(root)?;
+    let from = projects.iter().position(|project| project.id == id);
+    let target = projects.iter().position(|project| project.id == target_id);
+    let (Some(from), Some(target)) = (from, target) else {
+        return Err("The projects changed before the order could be saved".into());
+    };
+    if from != target {
+        let project = projects.remove(from);
+        let target = if from < target { target - 1 } else { target };
+        projects.insert(if before { target } else { target + 1 }, project);
+        let order: Vec<_> = projects.iter().map(|project| (&project.id, project.created_at)).collect();
+        let text = serde_json::to_string_pretty(&order).map_err(|e| e.to_string())?;
+        write_atomic(&root.join(ORDER_FILE), &text)?;
+    }
+    Ok(projects.into_iter().map(|project| project.id).collect())
+}
+
+#[tauri::command]
+pub fn move_project(app: AppHandle, id: String, target_id: String, before: bool) -> CmdResult<Vec<String>> {
+    move_project_in(&projects_root(&data_dir(&app)?), &id, &target_id, before)
 }
 
 #[tauri::command]
@@ -350,6 +393,49 @@ mod tests {
     use super::slugify;
     #[cfg(windows)]
     use std::{fs, path::PathBuf};
+
+    #[test]
+    fn project_order_persists_and_distinguishes_new_and_restored_projects() {
+        use std::{fs, path::{Path, PathBuf}};
+
+        struct Fixture(PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
+        }
+
+        fn add(root: &Path, id: &str, created_at: u64) {
+            let dir = root.join(id);
+            fs::create_dir(&dir).unwrap();
+            fs::write(dir.join("project.json"), format!(r#"{{"name":"{id}","createdAt":{created_at}}}"#)).unwrap();
+        }
+
+        fn ids(root: &Path) -> Vec<String> {
+            super::list_projects_in(root).unwrap().into_iter().map(|project| project.id).collect()
+        }
+
+        let fixture = Fixture(std::env::temp_dir().join(format!("crewboard-order-{}", crate::agents::unique())));
+        let root = &fixture.0;
+        fs::create_dir(root).unwrap();
+        add(root, "old", 1);
+        add(root, "middle", 2);
+        add(root, "recent", 3);
+        assert_eq!(ids(root), ["recent", "middle", "old"]);
+
+        super::move_project_in(root, "old", "recent", true).unwrap();
+        assert_eq!(ids(root), ["old", "recent", "middle"]);
+        super::move_project_in(root, "recent", "middle", false).unwrap();
+        assert_eq!(ids(root), ["old", "middle", "recent"]);
+
+        fs::rename(root.join("middle"), root.join(".recycled")).unwrap();
+        assert!(super::move_project_in(root, "recent", "middle", true).is_err());
+        assert_eq!(ids(root), ["old", "recent"]);
+        fs::rename(root.join(".recycled"), root.join("middle")).unwrap();
+        assert_eq!(ids(root), ["old", "middle", "recent"]);
+
+        fs::rename(root.join("middle"), root.join(".recycled")).unwrap();
+        add(root, "middle", 4);
+        assert_eq!(ids(root), ["middle", "old", "recent"]);
+    }
 
     #[cfg(windows)]
     #[test]

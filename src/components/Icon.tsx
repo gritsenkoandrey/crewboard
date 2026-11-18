@@ -1,5 +1,5 @@
 import type { SVGProps } from "react";
-type Name = "close" | "trash" | "more" | "plus" | "back" | "archive" | "restore" | "link" | "users" | "folder" | "edit" | "check" | "chevron" | "search";
+type Name = "close" | "trash" | "more" | "plus" | "back" | "archive" | "restore" | "link" | "users" | "folder" | "edit" | "check" | "chevron" | "search" | "grip";
 const paths: Record<Name, string> = {
   close: "M6 6l12 12M6 18 18 6",
   check: "m5 12 4 4L19 6",
@@ -7,6 +7,7 @@ const paths: Record<Name, string> = {
   search: "M21 21l-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",
   trash: "M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6",
   more: "M5 12h.01M12 12h.01M19 12h.01",
+  grip: "M8 6h1M15 6h1M8 12h1M15 12h1M8 18h1M15 18h1",
   plus: "M12 5v14M5 12h14",
   archive: "M3 3h18v5H3zM5 8v13h14V8M10 12h4",
   restore: "M3 10h5V5M3 10a9 9 0 1 1 1 9",

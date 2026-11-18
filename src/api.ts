@@ -22,6 +22,10 @@ export function listProjects(): Promise<Project[]> {
   return invoke("list_projects");
 }
 
+export function moveProject(id: string, targetId: string, before: boolean): Promise<string[]> {
+  return invoke("move_project", { id, targetId, before });
+}
+
 export function createProject(name: string): Promise<Project> {
   return invoke("create_project", { name });
 }

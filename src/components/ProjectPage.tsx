@@ -270,8 +270,10 @@ function DocumentTab({ document: doc, active, changed, busy, menuOpen, onSelect,
       {doc.externalPath && <Icon name="link" />}<span>{doc.name}</span>
       {changed && <span className="document-change-dot" title={t("File changed")} aria-label={t("File changed")} />}
     </button>
-    <button className="document-tab-menu" title={t("Actions: {name}", { name: doc.name })} aria-label={t("Document actions: {name}", { name: doc.name })}
-      aria-expanded={menuOpen} onClick={onMenu} disabled={busy}><Icon name="more" /></button>
+    {active && (
+      <button className="document-tab-menu" title={t("Actions: {name}", { name: doc.name })} aria-label={t("Document actions: {name}", { name: doc.name })}
+        aria-expanded={menuOpen} onClick={onMenu} disabled={busy}><Icon name="more" /></button>
+    )}
   </div>;
 }
 function DocumentNameDialog({ initial, title, busy, error, onSubmit, onClose }: {

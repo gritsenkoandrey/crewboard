@@ -3,6 +3,7 @@ import AgentSettings from "./components/AgentSettings";
 import Icon from "./components/Icon";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 import { useEffect, useRef, useState } from "react";
+import { arrayMove } from "@dnd-kit/sortable";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { flushAll, trackSave } from "./saveTracker";
 import {
@@ -11,6 +12,7 @@ import {
   restoreDeletedProject,
   getDataDir,
   listProjects,
+  moveProject,
   pickFolder,
   pickImage,
   removeCover,
@@ -25,11 +27,17 @@ import WelcomeScreen from "./components/WelcomeScreen";
 import AmbientBackground from "./components/AmbientBackground";
 import type { Project } from "./types";
 
+function applyProjectOrder(projects: Project[], ids: string[]): Project[] {
+  const positions = new Map(ids.map((id, index) => [id, index]));
+  return [...projects].sort((a, b) => (positions.get(a.id) ?? -1) - (positions.get(b.id) ?? -1));
+}
+
 export default function App() {
   const { t } = useI18n();
   const [agentSettings, setAgentSettings] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
   const [restoringProject, setRestoringProject] = useState(false);
+  const [reorderingProjects, setReorderingProjects] = useState(false);
   const [deletedProject, setDeletedProject] = useState<{ token: string; name: string } | null>(null);
   const projectOperation = useRef(false);
   const [info, setInfo] = useState<DataDirInfo | null>(null);
@@ -112,6 +120,26 @@ export default function App() {
     setProjects((list) => list.map((p) => (p.id === updated.id ? updated : p)));
   }
 
+  async function reorderProjects(id: string, targetId: string, before: boolean) {
+    if (projectOperation.current) return;
+    const previousOrder = projects.map((project) => project.id);
+    const nextOrder = arrayMove(previousOrder, previousOrder.indexOf(id), previousOrder.indexOf(targetId));
+    projectOperation.current = true;
+    setReorderingProjects(true);
+    setError(null);
+    setProjects((list) => applyProjectOrder(list, nextOrder));
+    try {
+      const order = await moveProject(id, targetId, before);
+      setProjects((list) => applyProjectOrder(list, order));
+    } catch (e) {
+      setProjects((list) => applyProjectOrder(list, previousOrder));
+      setError(String(e));
+    } finally {
+      projectOperation.current = false;
+      setReorderingProjects(false);
+    }
+  }
+
   function changeCover(id: string) {
     return run(async () => {
       const source = await pickImage();
@@ -147,6 +175,8 @@ export default function App() {
       const restored = await restoreDeletedProject(deletedProject.token);
       setProjects((list) => [restored, ...list.filter((project) => project.id !== restored.id)]);
       setDeletedProject(null);
+      const order = (await listProjects()).map((project) => project.id);
+      setProjects((list) => applyProjectOrder(list, order));
     } catch (e) { setError(String(e)); }
     finally { projectOperation.current = false; setRestoringProject(false); }
   }
@@ -182,7 +212,7 @@ export default function App() {
             <Icon name="users" />
             <span>{t("Participants")}</span>
           </button>
-          <button className="topbar-action" title={t("Change data folder")} aria-label={t("Change data folder")} onClick={chooseFolder}>
+          <button className="topbar-action" title={t("Change data folder")} aria-label={t("Change data folder")} onClick={chooseFolder} disabled={reorderingProjects}>
             <Icon name="folder" />
             <span>{t("Change folder")}</span>
           </button>
@@ -220,6 +250,8 @@ export default function App() {
         ) : (
           <ProjectList
             projects={projects}
+            reordering={reorderingProjects}
+            onReorder={(id, targetId, before) => trackSave(reorderProjects(id, targetId, before))}
             onOpen={(id) => { setDeletedProject(null); setOpenId(id); }}
             onCreate={(name) =>
               run(() => addProject(name))
@@ -233,7 +265,7 @@ export default function App() {
       </main>
       {deletedProject && <div className="archive-toast project-deletion-toast" role="status">
         <span>{t("Project “{name}” moved to the Recycle Bin", { name: deletedProject.name })}</span>
-        <button type="button" className="link-btn" disabled={projectBusy} onClick={() => void trackSave(undoProjectDeletion())}>{t(restoringProject ? "Undoing…" : "Undo")}</button>
+        <button type="button" className="link-btn" disabled={projectBusy || reorderingProjects} onClick={() => void trackSave(undoProjectDeletion())}>{t(restoringProject ? "Undoing…" : "Undo")}</button>
         <button type="button" className="icon-btn" disabled={projectBusy} aria-label={t("Dismiss notification")} onClick={() => setDeletedProject(null)}><Icon name="close" /></button>
       </div>}
     </div>

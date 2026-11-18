@@ -134,6 +134,7 @@ pub fn run() {
             get_data_dir,
             set_data_dir,
             projects::list_projects,
+            projects::move_project,
             projects::create_project,
             projects::rename_project,
             projects::delete_project,
