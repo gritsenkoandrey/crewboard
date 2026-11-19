@@ -6,6 +6,21 @@ A local desktop app for projects, tasks, and Markdown documents. Data lives in o
 in a folder you choose. No account, server, or internet connection is required for everyday use.
 A dedicated CLI lets local agents claim tasks and submit work reports.
 
+![Crewboard Kanban board for the Trail Atlas demo project](docs/screenshots/kanban-board.png)
+
+<details>
+<summary>More screenshots</summary>
+
+### Task details
+
+![Task panel with status, assignee, labels, and a Markdown description](docs/screenshots/task-details.png)
+
+### Markdown editor
+
+![Project brief with the Markdown editor and rendered preview side by side](docs/screenshots/markdown-editor.png)
+
+</details>
+
 ## Features
 
 - Projects with cover images, renaming, and a separate source code folder.
