@@ -273,13 +273,13 @@ body {
 }
 
 /* Project library */
-.project-library {
-  max-width: 1200px;
-  margin: 0 auto;
+.app--project-library > .content {
+  scrollbar-gutter: stable;
 }
 
-.project-library-list {
+.project-library {
   max-width: 600px;
+  margin: 0 auto;
 }
 
 .project-library-toolbar {
@@ -299,8 +299,8 @@ body {
 
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .project-grid.project-list-layout {
@@ -312,7 +312,7 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 190px;
+  min-height: 166px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg);
@@ -371,7 +371,7 @@ body {
 }
 
 .project-card .cover {
-  height: 120px;
+  height: 96px;
   border-radius: 9px 9px 0 0;
 }
 
@@ -460,32 +460,13 @@ body {
   background: #fff;
 }
 
-.new-card {
-  font: inherit;
-  color: var(--muted);
-  align-items: center;
-  justify-content: center;
+.project-library-form {
   gap: 6px;
+  min-height: 60px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
   border-style: dashed;
-}
-
-.new-card:hover {
-  color: var(--text);
-}
-
-.new-card.editing {
   cursor: default;
-  padding: 16px;
-}
-
-.new-card .inline-input-wrap {
-  flex: none;
-  width: 100%;
-}
-
-.new-card .plus {
-  font-size: 28px;
-  line-height: 1;
 }
 
 .project-list-layout .project-card {
@@ -543,12 +524,6 @@ body {
 .project-drag-handle[aria-disabled="true"] {
   opacity: 0.45;
   cursor: default;
-}
-
-.project-list-layout .new-card.editing {
-  flex-direction: column;
-  align-items: stretch;
-  padding: 10px 12px;
 }
 
 .hint {

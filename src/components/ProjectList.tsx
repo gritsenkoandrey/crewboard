@@ -95,9 +95,9 @@ export default function ProjectList({
   }
 
   return (
-    <div className={`project-library${listView ? " project-library-list" : ""}`}>
+    <div className="project-library">
       <div className="project-library-toolbar">
-        {listView && !creating && (
+        {!creating && (
           <button type="button" className="btn project-library-create" onClick={() => setCreating(true)}>
             <Icon name="plus" />
             {t("New project")}
@@ -108,6 +108,19 @@ export default function ProjectList({
           <button type="button" className={view === "list" ? "active" : ""} aria-pressed={view === "list"} onClick={() => switchView("list")}>{t("List")}</button>
         </div>
       </div>
+      {creating && (
+        <div className="project-card project-library-form">
+          <InlineInput
+            placeholder={t("Project name")}
+            onCommit={(name) => {
+              setCreating(false);
+              void onCreate(name);
+            }}
+            onCancel={() => setCreating(false)}
+          />
+          <span className="muted hint">{t("Enter to create, Esc to cancel")}</span>
+        </div>
+      )}
       <DndContext
         sensors={sensors}
         collisionDetection={(args) => args.pointerCoordinates ? pointerWithin(args) : closestCenter(args)}
@@ -131,24 +144,6 @@ export default function ProjectList({
       >
         <SortableContext items={projects.map((project) => project.id)} strategy={listView ? verticalListSortingStrategy : rectSortingStrategy}>
           <div className={`project-grid${listView ? " project-list-layout" : ""}`}>
-            {creating ? (
-              <div className="project-card new-card editing">
-                <InlineInput
-                  placeholder={t("Project name")}
-                  onCommit={(name) => {
-                    setCreating(false);
-                    void onCreate(name);
-                  }}
-                  onCancel={() => setCreating(false)}
-                />
-                <span className="muted hint">{t("Enter to create, Esc to cancel")}</span>
-              </div>
-            ) : !listView && (
-              <button className="project-card new-card" onClick={() => setCreating(true)}>
-                <span className="plus">+</span>
-                {t("New project")}</button>
-            )}
-
             {projects.map((project) => (
               <SortableProjectCard
                 key={project.id}
